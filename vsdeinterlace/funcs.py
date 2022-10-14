@@ -10,17 +10,15 @@ from math import gcd
 from pathlib import Path
 from typing import Any, SupportsFloat
 
+from lvsfunc import Stack, clip_async_render, get_render_progress
 from vskernels import BicubicDidee, Catrom, Kernel, KernelT
 from vsrgtools import repair
 from vstools import (
-    FieldBased, FieldBasedT, InvalidFramerateError, check_variable, check_variable_format, core, depth, get_depth,
-    get_neutral_value, get_prop, get_w, get_y, mod2, mod4, scale_value, vs
+    Dar, Direction, FieldBased, FieldBasedT, InvalidFramerateError, Region, check_variable, check_variable_format, core,
+    depth, get_depth, get_neutral_value, get_prop, get_w, get_y, mod2, mod4, scale_value, vs
 )
 
-from .comparison import Stack
 from .helpers import _calculate_dar_from_props
-from .render import clip_async_render, get_render_progress
-from .types import Dar, Direction, Region
 
 __all__ = [
     'check_patterns',
@@ -88,7 +86,7 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
 
     :raises ValueError:     `scale` is a value that is not to the power of 2.
     """
-    if (scale & (scale-1) != 0) and scale != 0 and scale != -1:
+    if (scale & (scale - 1) != 0) and scale != 0 and scale != -1:
         raise ValueError("seek_cycle: '`scale` must be a value that is the power of 2!'")
 
     # TODO: 60i checks and flags somehow? false positives gonna be a pain though
@@ -99,13 +97,13 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
     scale = 1 if scale == -1 else 2 ** scale
 
     height = clip.height * scale
-    width = get_w(height, clip.width/clip.height)
+    width = get_w(height, clip.width / clip.height)
 
     clip = clip.tdm.IsCombed()
     clip = Catrom().scale(clip, width, height)
 
     # Downscaling for the cycle clips
-    clip_down = BicubicDidee().scale(clip, mod2(width/4), mod2(height/4))
+    clip_down = BicubicDidee().scale(clip, mod2(width / 4), mod2(height / 4))
     if write_props:
         clip_down = core.std.FrameEval(clip_down, partial(check_combed, clip=clip_down), clip_down).text.FrameNum(2)
     blank_frame = clip_down.std.BlankClip(length=1, color=[0] * 3)
@@ -116,7 +114,7 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
 
     # Cycling
     cycle_clips = [pad_a, pad_b, pad_c, pad_d, pad_e]
-    pad_x = [pad_a.std.BlankClip(mod4(pad_a.width/15))] * 4
+    pad_x = [pad_a.std.BlankClip(mod4(pad_a.width / 15))] * 4
     cycle = cycle_clips + pad_x  # no shot this can't be done way cleaner
     cycle[::2], cycle[1::2] = cycle_clips, pad_x
 
@@ -124,7 +122,7 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
     stack_abcde = Stack(cycle).clip
 
     vert_pad = stack_abcde.std.BlankClip(height=mod2(stack_abcde.height / 5))
-    horz_pad = clip.std.BlankClip(mod2((stack_abcde.width-clip.width) / 2))
+    horz_pad = clip.std.BlankClip(mod2((stack_abcde.width - clip.width) / 2))
 
     stack = Stack([horz_pad, clip, horz_pad]).clip
     return Stack([vert_pad, stack, vert_pad, stack_abcde], direction=Direction.VERTICAL).clip
@@ -351,8 +349,8 @@ def descale_fields(clip: vs.VideoNode, tff: bool | FieldBasedT = True,
 
     :return:            Descaled GRAY clip.
     """
-    height_field = int(height/2)
-    width = width or get_w(height, clip.width/clip.height)
+    height_field = int(height / 2)
+    width = width or get_w(height, clip.width / clip.height)
 
     kernel = Kernel.ensure_obj(kernel)
 
