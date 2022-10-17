@@ -10,12 +10,12 @@ from math import gcd
 from pathlib import Path
 from typing import Any, SupportsFloat
 
-from lvsfunc import Stack, clip_async_render, get_render_progress
+from lvsfunc import Stack, clip_async_render
 from vskernels import BicubicDidee, Catrom, Kernel, KernelT
 from vsrgtools import repair
 from vstools import (
     Dar, Direction, FieldBased, FieldBasedT, InvalidFramerateError, Region, check_variable, check_variable_format, core,
-    depth, get_depth, get_neutral_value, get_prop, get_w, get_y, mod2, mod4, scale_value, vs
+    depth, get_depth, get_neutral_value, get_prop, get_render_progress, get_w, get_y, mod2, mod4, scale_value, vs
 )
 
 from .helpers import _calculate_dar_from_props
