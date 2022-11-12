@@ -25,12 +25,12 @@ __all__ = [
     'deblend',
     'descale_fields',
     'fix_telecined_fades',
-    'pulldown_credits', 'ivtc_credits',
+    'pulldown_credits',
     'seek_cycle',
-    'sivtc', 'SIVTC',
-    'tivtc_vfr', 'TIVTC_VFR',
+    'sivtc',
+    'tivtc_vfr',
     'vinverse',
-    'PARser', 'parser',
+    'PARser'
 ]
 
 main_file = os.path.realpath(sys.argv[0]) if sys.argv[0] else None
@@ -765,10 +765,3 @@ def _check_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
 
     print(f"check_patterns: 'Clean clip found with pattern {pattern}!'")
     return True
-
-
-# Temporary aliases
-SIVTC = sivtc
-TIVTC_VFR = tivtc_vfr
-ivtc_credits = pulldown_credits
-parser = PARser
