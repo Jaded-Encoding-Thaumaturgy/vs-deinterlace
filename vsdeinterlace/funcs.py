@@ -5,7 +5,10 @@ from fractions import Fraction
 from typing import Any
 
 from vskernels import Catrom, Kernel, KernelT
-from vstools import FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core, get_w, get_y, vs
+from vstools import (
+    CustomValueError, DependencyNotFoundError, FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core,
+    get_w, get_y, vs
+)
 
 __all__ = [
     'descale_fields',
@@ -99,7 +102,7 @@ def pulldown_credits(
     try:
         from havsfunc import QTGMC  # type: ignore[import]
     except ModuleNotFoundError:
-        raise ModuleNotFoundError("pulldown_credits: missing dependency `havsfunc`!")
+        raise DependencyNotFoundError(pulldown_credits, 'havsfunc')
 
     try:
         from vsdenoise import prefilter_to_full_range
@@ -109,8 +112,7 @@ def pulldown_credits(
 
     assert check_variable(clip, "pulldown_credits")
 
-    if clip.fps != Fraction(30000, 1001):
-        raise ValueError("pulldown_credits: 'Your clip must have a framerate of 30000/1001!'")
+    InvalidFramerateError.check(pulldown_credits, clip, (30000, 1001))
 
     tff = FieldBased.from_param(tff, pulldown_credits) or FieldBased.from_video(clip, True)
     clip = FieldBased.ensure_presence(clip, tff)
@@ -144,9 +146,7 @@ def pulldown_credits(
     # Bobbed clip
     bobbed = bob_clip or QTGMC(clip, **qtgmc_kwargs)
 
-    if bobbed.fps != Fraction(60000, 1001):
-        raise InvalidFramerateError("pulldown_credits", bobbed,
-                                    "{func} 'Your bobbed clip *must* have a framerate of 60000/1001!'")
+    InvalidFramerateError.check(pulldown_credits, bobbed, (60000, 1001))
 
     if interlaced:  # 60i credits. Start of ABBCD
         if dec:  # Decimate the clip instead of properly IVTC

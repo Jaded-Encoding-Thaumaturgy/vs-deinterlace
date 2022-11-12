@@ -7,7 +7,7 @@ import warnings
 from pathlib import Path
 from typing import Any
 
-from vstools import FieldBased, FieldBasedT, core, get_render_progress, vs
+from vstools import FieldBased, FieldBasedT, core, get_render_progress, vs, CustomTypeError
 
 __all__ = [
     'sivtc',
@@ -87,8 +87,10 @@ def tivtc_vfr(
     :raises TypeError:          Invalid ``decimate`` argument is passed.
     """
 
-    if int(decimate) not in (-1, 0, 1):
-        raise TypeError("TIVTC_VFR: 'Invalid `decimate` argument. Must be True/False, their integer values, or -1!'")
+    if int(decimate) not in {-1, 0, 1}:
+        raise CustomTypeError(
+            "Invalid 'decimate' argument. Must be True/False, their integer values, or -1!", tivtc_vfr
+        )
 
     tfm_f = tdec_f = timecodes_f = Path()
 

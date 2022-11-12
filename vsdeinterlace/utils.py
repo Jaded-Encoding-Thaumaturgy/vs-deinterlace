@@ -6,9 +6,12 @@ from math import gcd
 from typing import SupportsFloat
 
 from vskernels import BicubicDidee, Catrom
-from vstools import Dar, FieldBased, FieldBasedT, Region, core, depth, get_prop, get_w, mod2, mod4, vs
+from vstools import (
+    CustomError, CustomValueError, Dar, FieldBased, FieldBasedT, FuncExceptT, Region, core, depth, fallback, get_prop,
+    get_w, mod2, mod4, vs
+)
 
-from .helpers import calculate_dar_from_props, check_ivtc_pattern
+from .helpers import check_ivtc_pattern
 
 __all__ = [
     'seek_cycle',
@@ -47,7 +50,7 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
     """
 
     if (scale & (scale - 1) != 0) and scale != 0 and scale != -1:
-        raise ValueError("seek_cycle: '`scale` must be a value that is the power of 2!'")
+        raise CustomValueError("'scale' must be a power of 2!", seek_cycle)
 
     # TODO: 60i checks and flags somehow? false positives gonna be a pain though
     def check_combed(n: int, f: vs.VideoFrame, clip: vs.VideoNode) -> vs.VideoNode:
@@ -129,9 +132,9 @@ def check_patterns(clip: vs.VideoNode, tff: bool | FieldBasedT | None = None) ->
             break
 
     if pattern == -1:
-        raise StopIteration(
-            "check_patterns: 'None of the patterns resulted in a clip without combing. "
-            "Please try performing proper IVTC on the clip."
+        raise CustomError[StopIteration](
+            'None of the patterns resulted in a clip without combing. '
+            'Please try performing proper IVTC on the clip.', check_patterns
         )
 
     return pattern
@@ -141,7 +144,7 @@ def PARser(
     clip: vs.VideoNode, active_area: int,
     dar: Dar | str | Fraction | None = None, height: int | None = None,
     region: Region | str = Region.NTSC,
-    return_result: bool = False
+    return_result: bool = False, func: FuncExceptT | None = None
 ) -> vs.VideoNode | dict[str, SupportsFloat | tuple[int, int] | str]:
     """
     Calculate SAR (sample aspect ratio) and attach result as frameprops.
@@ -202,13 +205,15 @@ def PARser(
     :raises ValueError:         Invalid :py:attr:`vstools.Region` is passed.
     """
 
+    func = fallback(func, PARser)
+
     match dar:
         case Fraction(): new_dar = dar.numerator, dar.denominator
         case Dar.WIDESCREEN: new_dar = 16, 9
         case Dar.FULLSCREEN: new_dar = 4, 3
         case Dar.SQUARE: return clip.std.SetFrameProps(_SARDen=1, _SARNum=1)
-        case None: return PARser(clip, active_area, calculate_dar_from_props(clip), height, region, return_result)
-        case _: raise ValueError(f"Invalid DAR passed! Must be in {[str(e.value) for e in Dar]} or None!")
+        case None: return PARser(clip, active_area, Dar.from_video(clip), height, region, return_result, func)
+        case _: raise CustomValueError('Invalid DAR passed! Must be in {values} or None!', func, values=iter(Dar))
 
     props = dict[str, SupportsFloat | tuple[int, int] | str](dar=new_dar)
 
@@ -216,7 +221,7 @@ def PARser(
         match region:
             case Region.NTSC: height = 480
             case Region.PAL: height = 576
-            case _: raise ValueError(f"Invalid region passed! Must be in {[str(e.value) for e in Region]}!")
+            case _: raise CustomValueError('Invalid Region passed! Must be in {values}!', func, values=iter(Region))
 
     sar = new_dar[0] * height, new_dar[1] * active_area
     sargcd = gcd(sar[0], sar[1])

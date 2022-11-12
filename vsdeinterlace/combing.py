@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from vstools import (
-    FieldBased, FieldBasedT, check_variable_format, core, depth, get_depth, get_neutral_value, scale_value, vs
+    CustomOverflowError, DependencyNotFoundError, FieldBased, FieldBasedT, check_variable_format, core, depth,
+    get_depth, get_neutral_value, scale_value, vs
 )
 
 __all__ = [
@@ -28,9 +29,6 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
         | If you pass your own float clip, you'll want to make sure to properly dither it down after.
         | If you don't do this, you'll run into some serious issues!
 
-    Taken from this gist and modified by LightArrowsEXE.
-    <https://gist.github.com/blackpilling/bf22846bfaa870a57ad77925c3524eb1>
-
     :param clip:                            Clip to process.
     :param tff:                             Top-field-first. `False` sets it to Bottom-Field-First.
                                             If `None`, get the field order from the _FieldBased prop.
@@ -51,7 +49,7 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
         try:
             from stgfunc import mean_plane_value
         except ModuleNotFoundError:
-            raise ModuleNotFoundError("fix_telecined_fades: missing dependency `stgfunc`!")
+            raise DependencyNotFoundError(fix_telecined_fades, 'stgfunc', 'cuda=True')
 
         avg_props_clip = mean_plane_value(fields, [0.0, 1.0], cuda=True, prop='psmAvg', single_out=True, planes=0)
     else:
@@ -95,7 +93,7 @@ def vinverse(clip: vs.VideoNode, sstr: float = 2.0, amount: int = 128, scale: fl
     assert check_variable_format(clip, "vinverse")
 
     if amount > 255:
-        raise ValueError("vinverse: '`amount` may not be set higher than 255!'")
+        raise CustomOverflowError("'amount' may not be set higher than 255!", vinverse)
 
     neutral = get_neutral_value(clip)
 
