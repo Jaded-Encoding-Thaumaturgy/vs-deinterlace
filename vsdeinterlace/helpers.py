@@ -1,13 +1,40 @@
 from __future__ import annotations
 
-from vstools import Dar, vs, get_prop, FramePropError
+from lvsfunc import clip_async_render
+from vstools import Dar, FramePropError, core, get_prop, vs
 
 __all__ = [
-    '_calculate_dar_from_props'
+    'check_ivtc_pattern',
+    'calculate_dar_from_props'
 ]
 
 
-def _calculate_dar_from_props(clip: vs.VideoNode) -> Dar:
+def check_ivtc_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
+    """:py:func:`lvsfunc.deinterlace.check_patterns` rendering behaviour."""
+
+    from .funcs import sivtc
+
+    clip = sivtc(clip, pattern)
+    clip = core.tdm.IsCombed(clip)
+
+    frames: list[int] = []
+
+    def _cb(n: int, f: vs.VideoFrame) -> None:
+        if get_prop(f, '_Combed', int):
+            frames.append(n)
+
+    # TODO: Tried being clever and just exiting if any combing was found, but async_render had other plans :)
+    clip_async_render(clip[::4], progress=f"Checking pattern {pattern}...", callback=_cb)
+
+    if len(frames) > 0:
+        print(f"check_patterns: 'Combing found with pattern {pattern}!'")
+        return False
+
+    print(f"check_patterns: 'Clean clip found with pattern {pattern}!'")
+    return True
+
+
+def calculate_dar_from_props(clip: vs.VideoNode) -> Dar:
     """Determine what DAR the clip is by checking default SAR props."""
     frame = clip.get_frame(0)
 
