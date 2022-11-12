@@ -78,7 +78,7 @@ def vinverse(clip: vs.VideoNode, sstr: float = 2.0, amount: int = 128, scale: fl
     """
     Clean up residual combing after a deinterlacing pass.
 
-    This is Setsugen no ao's implementation, adopted into lvsfunc.
+    This is Setsugen no ao's implementation, adopted into vsdeinterlace.
 
     :param clip:        Clip to process.
     :param sstr:        Contrasharpening strength. Increase this if you find

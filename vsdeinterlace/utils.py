@@ -5,7 +5,6 @@ from functools import partial
 from math import gcd
 from typing import SupportsFloat
 
-from lvsfunc import Stack
 from vskernels import BicubicDidee, Catrom
 from vstools import Dar, Direction, FieldBased, FieldBasedT, Region, core, depth, get_prop, get_w, mod2, mod4, vs
 
@@ -80,13 +79,13 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
     cycle[::2], cycle[1::2] = cycle_clips, pad_x
 
     # Final stacking
-    stack_abcde = Stack(cycle).clip
+    stack_abcde = core.std.StackHorizontal(cycle)
 
     vert_pad = stack_abcde.std.BlankClip(height=mod2(stack_abcde.height / 5))
     horz_pad = clip.std.BlankClip(mod2((stack_abcde.width - clip.width) / 2))
 
-    stack = Stack([horz_pad, clip, horz_pad]).clip
-    return Stack([vert_pad, stack, vert_pad, stack_abcde], direction=Direction.VERTICAL).clip
+    stack = core.std.StackHorizontal([horz_pad, clip, horz_pad])
+    return core.std.StackVertical([vert_pad, stack, vert_pad, stack_abcde])
 
 
 def check_patterns(clip: vs.VideoNode, tff: bool | FieldBasedT | None = None) -> int:
@@ -180,7 +179,7 @@ def PARser(
     :param active_area:         Width you would end up with post-cropping.
                                 Only take into account darker messed up edges!
     :param dar:                 Display Aspect Ratio. Refers to the analog television aspect ratio.
-                                Must be a :py:attr:`lvsfunc.types.Dar` enum, a string representing a Dar value,
+                                Must be a :py:attr:`vstools.Dar` enum, a string representing a Dar value,
                                 or a Fraction object containing a user-defined DAR.
                                 If None, automatically guesses DAR based on the SAR props.
                                 Default: assume based on current SAR properties.
@@ -191,16 +190,16 @@ def PARser(
                                 or need to deal with ITU-R REC.601 video.
                                 Default: input clip's height.
     :param region:              Analog television region. Must be either NTSC or PAL.
-                                Must be a :py:attr:`lvsfunc.types.Region` enum  or string representing a Region value.
-                                Default: :py:attr:`lvsfunc.types.Region.NTSC`.
+                                Must be a :py:attr:`vstools.Region` enum  or string representing a Region value.
+                                Default: :py:attr:`vstools.Region.NTSC`.
     :param return_result:       Return the results as a dict. Default: False.
 
     :return:                    Clip with corrected SAR props and anamorphic width/height prop,
                                 or a dictionary with all the results.
 
     :raises FramePropError:     DAR is None and no SAR props are set on the input clip.
-    :raises ValueError:         Invalid :py:attr:`lvsfunc.types.Dar` is passed.
-    :raises ValueError:         Invalid :py:attr:`lvsfunc.types.Region` is passed.
+    :raises ValueError:         Invalid :py:attr:`vstools.Dar` is passed.
+    :raises ValueError:         Invalid :py:attr:`vstools.Region` is passed.
     """
 
     match dar:
