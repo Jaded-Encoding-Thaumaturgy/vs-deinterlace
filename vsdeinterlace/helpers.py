@@ -11,7 +11,7 @@ __all__ = [
 def check_ivtc_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
     """:py:func:`vsdeinterlace.utils.check_patterns` rendering behaviour."""
 
-    from .funcs import sivtc
+    from .ivtc import sivtc
 
     clip = sivtc(clip, pattern).tdm.IsCombed()
 

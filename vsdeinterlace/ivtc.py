@@ -133,12 +133,11 @@ def tivtc_vfr(
     while not (tfm_f.stat().st_size > 0 and tdec_f.stat().st_size > 0):
         time.sleep(0.5)  # Allow it to properly finish writing logs if necessary
 
-    tfm_args = {**tfm_args, 'input': str(tfm_in)}
+    tfm_args = (tfm_args or {}) | dict(input=str(tfm_in))
 
-    tdecimate_args = {
-        'mode': 5, 'hybrid': 2, 'vfrDec': 1, **tdecimate_args,
-        'input': str(tdec_f), 'tfmIn': str(tfm_f), 'mkvOut': str(timecodes_f),
-    }
+    tdecimate_args = (tdecimate_args or {}) | dict(
+        mode=5, hybrid=2, vfrDec=1, input=str(tdec_f), tfmIn=str(tfm_f), mkvOut=str(timecodes_f)
+    )
 
     tfm = clip.tivtc.TFM(**tfm_args) if decimate != -1 else clip
 

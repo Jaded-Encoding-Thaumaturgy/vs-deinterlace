@@ -97,7 +97,7 @@ def pulldown_credits(
     """
 
     try:
-        from havsfunc import QTGMC
+        from havsfunc import QTGMC  # type: ignore[import]
     except ModuleNotFoundError:
         raise ModuleNotFoundError("pulldown_credits: missing dependency `havsfunc`!")
 
