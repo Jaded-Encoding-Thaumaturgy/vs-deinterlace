@@ -59,7 +59,7 @@ def descale_fields(
 def pulldown_credits(
     clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
     interlaced: bool = True, dec: bool | None = None,
-    bob_clip: vs.VideoNode | None = None, qtgmc_args: dict[str, Any] = {}
+    bob_clip: vs.VideoNode | None = None, qtgmc_args: dict[str, Any] | None = None
 ) -> vs.VideoNode:
     """
     Deinterlacing function for interlaced credits (60i/30p) on top of telecined video (24p).
@@ -115,9 +115,9 @@ def pulldown_credits(
     tff = FieldBased.from_param(tff, pulldown_credits) or FieldBased.from_video(clip, True)
     clip = FieldBased.ensure_presence(clip, tff)
 
-    qtgmc_kwargs: dict[str, Any] = dict(SourceMatch=3, Lossless=2, TR0=2, TR1=2, TR2=3, Preset="Placebo")
-    qtgmc_kwargs |= qtgmc_args
-    qtgmc_kwargs |= dict(FPSDivisor=1, TFF=tff.field)
+    qtgmc_kwargs = dict[str, Any](
+        SourceMatch=3, Lossless=2, TR0=2, TR1=2, TR2=3, Preset="Placebo"
+    ) | (qtgmc_args or {}) | dict(FPSDivisor=1, TFF=tff.field)
 
     if dec is not False:  # Automatically enable dec unless set to False
         dec = any(x in clip.get_frame(0).props for x in {"VFMMatch", "TFMMatch"})

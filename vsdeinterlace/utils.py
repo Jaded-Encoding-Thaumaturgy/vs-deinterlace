@@ -203,9 +203,6 @@ def PARser(
     :raises ValueError:         Invalid :py:attr:`lvsfunc.types.Region` is passed.
     """
 
-    new_dar: tuple[int, int]
-    props: dict[str, SupportsFloat | tuple[int, int] | str] = dict()
-
     match dar:
         case Fraction(): new_dar = dar.numerator, dar.denominator
         case Dar.WIDESCREEN: new_dar = 16, 9
@@ -214,7 +211,7 @@ def PARser(
         case None: return PARser(clip, active_area, calculate_dar_from_props(clip), height, region, return_result)
         case _: raise ValueError(f"Invalid DAR passed! Must be in {[str(e.value) for e in Dar]} or None!")
 
-    props |= dict(dar=new_dar)
+    props = dict[str, SupportsFloat | tuple[int, int] | str](dar=new_dar)
 
     if height is None:
         match region:
@@ -228,15 +225,17 @@ def PARser(
     sarden = sar[0] // sargcd
     sarnum = sar[1] // sargcd
 
-    props |= dict(_SARDen=sarden, _SARNum=sarnum)
+    props.update(_SARDen=sarden, _SARNum=sarnum)
 
     match dar:
-        case Dar.WIDESCREEN: props |= dict(amorph_width=clip.width * (sarden / sarnum))
-        case Dar.FULLSCREEN: props |= dict(amorph_height=clip.height * (sarnum / sarden))
+        case Dar.WIDESCREEN: props.update(amorph_width=clip.width * (sarden / sarnum))
+        case Dar.FULLSCREEN: props.update(amorph_height=clip.height * (sarnum / sarden))
         # TODO: autoguess which to return based on the sarnum maybe?
-        case _: props |= dict(amorph__note="Use your best judgment to pick one!",
-                              amorph_width=clip.width * (sarden / sarnum),
-                              amorph_height=clip.height * (sarnum / sarden))
+        case _: props.update(
+            amorph__note="Use your best judgment to pick one!",
+            amorph_width=clip.width * (sarden / sarnum),
+            amorph_height=clip.height * (sarnum / sarden)
+        )
 
     if return_result:
         return props

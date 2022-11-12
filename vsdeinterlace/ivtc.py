@@ -49,8 +49,8 @@ def tivtc_vfr(
     tdec_in: Path | str = f".ivtc/{main_file}metrics.txt",
     timecodes_out: Path | str = f".ivtc/{main_file}timecodes.txt",
     decimate: int | bool = True,
-    tfm_args: dict[str, Any] = {},
-    tdecimate_args: dict[str, Any] = {}
+    tfm_args: dict[str, Any] | None = None,
+    tdecimate_args: dict[str, Any] | None = None
 ) -> vs.VideoNode:
     """
     Perform TFM and TDecimate on a clip that is supposed to be VFR.
@@ -111,8 +111,8 @@ def tivtc_vfr(
                       "If it still doesn't work, open the ``.ivtc`` directory and check if the files are 0kb. "
                       "If they are, delete them and run the function again.'")
 
-        tfm_analysis: dict[str, Any] = {**tfm_args, 'output': str(tfm_f)}
-        tdec_analysis: dict[str, Any] = {'mode': 4, **tdecimate_args, 'output': str(tdec_f)}
+        tfm_analysis = dict[str, Any](output=str(tfm_f), **(tfm_args or {}))
+        tdec_analysis = dict[str, Any](mode=4, output=str(tdec_f), **(tdecimate_args or {}))
 
         ivtc_clip = core.tivtc.TFM(clip, **tfm_analysis)
         ivtc_clip = core.tivtc.TDecimate(ivtc_clip, **tdec_analysis)
