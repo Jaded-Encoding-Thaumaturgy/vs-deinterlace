@@ -6,7 +6,7 @@ from math import gcd
 from typing import SupportsFloat
 
 from vskernels import BicubicDidee, Catrom
-from vstools import Dar, Direction, FieldBased, FieldBasedT, Region, core, depth, get_prop, get_w, mod2, mod4, vs
+from vstools import Dar, FieldBased, FieldBasedT, Region, core, depth, get_prop, get_w, mod2, mod4, vs
 
 from .helpers import calculate_dar_from_props, check_ivtc_pattern
 
