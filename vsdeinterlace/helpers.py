@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from lvsfunc import clip_async_render
-from vstools import Dar, FramePropError, core, get_prop, vs
+from vstools import Dar, FramePropError, get_prop, get_render_progress, vs
 
 __all__ = [
     'check_ivtc_pattern',
@@ -14,21 +13,17 @@ def check_ivtc_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
 
     from .funcs import sivtc
 
-    clip = sivtc(clip, pattern)
-    clip = core.tdm.IsCombed(clip)
+    clip = sivtc(clip, pattern).tdm.IsCombed()
 
-    frames: list[int] = []
+    p = get_render_progress()
+    task = p.add_task(f"Checking pattern {pattern}...", total=clip.num_frames)
 
-    def _cb(n: int, f: vs.VideoFrame) -> None:
+    for f in clip[::4].frames(close=True):
         if get_prop(f, '_Combed', int):
-            frames.append(n)
+            print(f"check_patterns: 'Combing found with pattern {pattern}!'")
+            return False
 
-    # TODO: Tried being clever and just exiting if any combing was found, but async_render had other plans :)
-    clip_async_render(clip[::4], progress=f"Checking pattern {pattern}...", callback=_cb)
-
-    if len(frames) > 0:
-        print(f"check_patterns: 'Combing found with pattern {pattern}!'")
-        return False
+        p.update(task, advance=1)
 
     print(f"check_patterns: 'Clean clip found with pattern {pattern}!'")
     return True
