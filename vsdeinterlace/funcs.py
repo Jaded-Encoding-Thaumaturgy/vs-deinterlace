@@ -14,10 +14,12 @@ __all__ = [
 ]
 
 
-def descale_fields(clip: vs.VideoNode, tff: bool | FieldBasedT = True,
-                   width: int | None = None, height: int = 720,
-                   kernel: KernelT = Catrom,
-                   src_top: float = 0.0) -> vs.VideoNode:
+def descale_fields(
+    clip: vs.VideoNode, tff: bool | FieldBasedT = True,
+    width: int | None = None, height: int = 720,
+    kernel: KernelT = Catrom,
+    src_top: float = 0.0
+) -> vs.VideoNode:
     """
     Descale interwoven upscaled fields, also known as a cross conversion.
 
@@ -39,6 +41,7 @@ def descale_fields(clip: vs.VideoNode, tff: bool | FieldBasedT = True,
 
     :return:            Descaled GRAY clip.
     """
+
     height_field = int(height / 2)
     width = width or get_w(height, clip.width / clip.height)
 
@@ -53,10 +56,11 @@ def descale_fields(clip: vs.VideoNode, tff: bool | FieldBasedT = True,
     return weave_y.std.SetFieldBased(0)[::2]
 
 
-def pulldown_credits(clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
-                     interlaced: bool = True, dec: bool | None = None,
-                     bob_clip: vs.VideoNode | None = None, qtgmc_args: dict[str, Any] = {}
-                     ) -> vs.VideoNode:
+def pulldown_credits(
+    clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
+    interlaced: bool = True, dec: bool | None = None,
+    bob_clip: vs.VideoNode | None = None, qtgmc_args: dict[str, Any] = {}
+) -> vs.VideoNode:
     """
     Deinterlacing function for interlaced credits (60i/30p) on top of telecined video (24p).
 
@@ -91,6 +95,7 @@ def pulldown_credits(clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT
     :raises TopFieldFirstError:     No automatic ``tff`` can be determined.
     :raises InvalidFramerateError:  Bobbed clip does not have a framerate of 60000/1001 (59.94)
     """
+
     try:
         from havsfunc import QTGMC
     except ModuleNotFoundError:

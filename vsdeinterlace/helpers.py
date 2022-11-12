@@ -10,7 +10,7 @@ __all__ = [
 
 
 def check_ivtc_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
-    """:py:func:`lvsfunc.deinterlace.check_patterns` rendering behaviour."""
+    """:py:func:`vsdeinterlace.utils.check_patterns` rendering behaviour."""
 
     from .funcs import sivtc
 

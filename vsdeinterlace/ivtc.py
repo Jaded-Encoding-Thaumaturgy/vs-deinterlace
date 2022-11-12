@@ -29,6 +29,7 @@ def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True, 
 
     :return:            IVTC'd clip.
     """
+
     pattern = pattern % 5
 
     defivtc = core.std.SeparateFields(clip, tff=FieldBased.from_param(tff).field).std.DoubleWeave()
@@ -42,13 +43,15 @@ main_file = f"{os.path.splitext(os.path.basename(str(main_file)))[0]}_"
 main_file = "{yourScriptName}_" if main_file in ("__main___", "setup_") else main_file
 
 
-def tivtc_vfr(clip: vs.VideoNode,
-              tfm_in: Path | str = f".ivtc/{main_file}matches.txt",
-              tdec_in: Path | str = f".ivtc/{main_file}metrics.txt",
-              timecodes_out: Path | str = f".ivtc/{main_file}timecodes.txt",
-              decimate: int | bool = True,
-              tfm_args: dict[str, Any] = {},
-              tdecimate_args: dict[str, Any] = {}) -> vs.VideoNode:
+def tivtc_vfr(
+    clip: vs.VideoNode,
+    tfm_in: Path | str = f".ivtc/{main_file}matches.txt",
+    tdec_in: Path | str = f".ivtc/{main_file}metrics.txt",
+    timecodes_out: Path | str = f".ivtc/{main_file}timecodes.txt",
+    decimate: int | bool = True,
+    tfm_args: dict[str, Any] = {},
+    tdecimate_args: dict[str, Any] = {}
+) -> vs.VideoNode:
     """
     Perform TFM and TDecimate on a clip that is supposed to be VFR.
 
@@ -83,6 +86,7 @@ def tivtc_vfr(clip: vs.VideoNode,
 
     :raises TypeError:          Invalid ``decimate`` argument is passed.
     """
+
     if int(decimate) not in (-1, 0, 1):
         raise TypeError("TIVTC_VFR: 'Invalid `decimate` argument. Must be True/False, their integer values, or -1!'")
 
@@ -137,4 +141,5 @@ def tivtc_vfr(clip: vs.VideoNode,
     }
 
     tfm = clip.tivtc.TFM(**tfm_args) if decimate != -1 else clip
+
     return tfm.tivtc.TDecimate(**tdecimate_args) if int(decimate) != 0 else tfm

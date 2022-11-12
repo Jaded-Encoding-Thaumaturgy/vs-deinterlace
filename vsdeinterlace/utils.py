@@ -46,6 +46,7 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
 
     :raises ValueError:     `scale` is a value that is not to the power of 2.
     """
+
     if (scale & (scale - 1) != 0) and scale != 0 and scale != -1:
         raise ValueError("seek_cycle: '`scale` must be a value that is the power of 2!'")
 
@@ -114,6 +115,7 @@ def check_patterns(clip: vs.VideoNode, tff: bool | FieldBasedT | None = None) ->
     :raises TopFieldFirstError:     No automatic ``tff`` can be determined.
     :raises StopIteration:          No pattern resulted in a clean match.
     """
+
     clip = FieldBased.ensure_presence(clip, tff, check_patterns)
 
     clip = depth(clip, 8)
@@ -128,16 +130,20 @@ def check_patterns(clip: vs.VideoNode, tff: bool | FieldBasedT | None = None) ->
             break
 
     if pattern == -1:
-        raise StopIteration("check_patterns: 'None of the patterns resulted in a clip without combing. "
-                            "Please try performing proper IVTC on the clip.")
+        raise StopIteration(
+            "check_patterns: 'None of the patterns resulted in a clip without combing. "
+            "Please try performing proper IVTC on the clip."
+        )
 
     return pattern
 
 
-def PARser(clip: vs.VideoNode, active_area: int,
-           dar: Dar | str | Fraction | None = None, height: int | None = None,
-           region: Region | str = Region.NTSC,
-           return_result: bool = False) -> vs.VideoNode | dict[str, SupportsFloat | tuple[int, int] | str]:
+def PARser(
+    clip: vs.VideoNode, active_area: int,
+    dar: Dar | str | Fraction | None = None, height: int | None = None,
+    region: Region | str = Region.NTSC,
+    return_result: bool = False
+) -> vs.VideoNode | dict[str, SupportsFloat | tuple[int, int] | str]:
     """
     Calculate SAR (sample aspect ratio) and attach result as frameprops.
 
@@ -196,6 +202,7 @@ def PARser(clip: vs.VideoNode, active_area: int,
     :raises ValueError:         Invalid :py:attr:`lvsfunc.types.Dar` is passed.
     :raises ValueError:         Invalid :py:attr:`lvsfunc.types.Region` is passed.
     """
+
     new_dar: tuple[int, int]
     props: dict[str, SupportsFloat | tuple[int, int] | str] = dict()
 

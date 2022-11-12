@@ -40,6 +40,7 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
 
     :raises UndefinedFieldBasedError:       No automatic ``tff`` can be determined.
     """
+
     bits = get_depth(clip)
 
     clip = FieldBased.ensure_presence(clip, tff, fix_telecined_fades)
@@ -73,8 +74,7 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
     return depth(output, bits)
 
 
-def vinverse(clip: vs.VideoNode, sstr: float = 2.0,
-             amount: int = 128, scale: float = 1.5) -> vs.VideoNode:
+def vinverse(clip: vs.VideoNode, sstr: float = 2.0, amount: int = 128, scale: float = 1.5) -> vs.VideoNode:
     """
     Clean up residual combing after a deinterlacing pass.
 
@@ -91,6 +91,7 @@ def vinverse(clip: vs.VideoNode, sstr: float = 2.0,
 
     :raises ValueError: ``amount`` is set above 255.
     """
+
     assert check_variable_format(clip, "vinverse")
 
     if amount > 255:
@@ -102,14 +103,18 @@ def vinverse(clip: vs.VideoNode, sstr: float = 2.0,
     find_combs = clip.akarin.Expr(f'{neutral} n! x x 2 * x[0,-1] x[0,1] + + 4 / - n@ +')
 
     # Expression to decomb it (creates blending)
-    decomb = core.akarin.Expr([find_combs, clip],
-                              f'{neutral} n! x 2 * x[0,-1] x[0,1] + + 4 / blur! y x blur@ - x n@ - * 0 < n@ x blur@ '
-                              ' - abs x n@ - abs < x blur@ - n@ + x ? ? - n@ +')
+    decomb = core.akarin.Expr(
+        [find_combs, clip],
+        f'{neutral} n! x 2 * x[0,-1] x[0,1] + + 4 / blur! y x blur@ - x n@ - * 0 < n@ x blur@ '
+        ' - abs x n@ - abs < x blur@ - n@ + x ? ? - n@ +'
+    )
 
     # Final expression to properly merge it and avoid creating too much damage
-    return core.akarin.Expr([clip, decomb],
-                            f'{neutral} n! {scale_value(amount, 8, clip.format.bits_per_sample)} a! y y y y 2 * y[0,-1]'
-                            f' y[0,1] + + 4 / - {sstr} * + y - n@ + sdiff! x y - n@ + diff! sdiff@ n@ - diff@ n@ - '
-                            f'* 0 < sdiff@ n@ - abs diff@ n@ - abs < sdiff@ diff@ ? n@ - {scale} * n@ + sdiff@ n@ '
-                            '- abs diff@ n@ - abs < sdiff@ diff@ ? ? n@ - + merge! x a@ + merge@ < x a@ + x a@ - '
-                            'merge@ > x a@ - merge@ ? ?')
+    return core.akarin.Expr(
+        [clip, decomb],
+        f'{neutral} n! {scale_value(amount, 8, clip.format.bits_per_sample)} a! y y y y 2 * y[0,-1]'
+        f' y[0,1] + + 4 / - {sstr} * + y - n@ + sdiff! x y - n@ + diff! sdiff@ n@ - diff@ n@ - '
+        f'* 0 < sdiff@ n@ - abs diff@ n@ - abs < sdiff@ diff@ ? n@ - {scale} * n@ + sdiff@ n@ '
+        '- abs diff@ n@ - abs < sdiff@ diff@ ? ? n@ - + merge! x a@ + merge@ < x a@ + x a@ - '
+        'merge@ > x a@ - merge@ ? ?'
+    )

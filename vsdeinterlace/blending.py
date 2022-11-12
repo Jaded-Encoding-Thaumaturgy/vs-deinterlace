@@ -11,8 +11,7 @@ __all__ = [
 ]
 
 
-def deblend(clip: vs.VideoNode, start: int = 0,
-            rep: int | None = None, decimate: bool = True) -> vs.VideoNode:
+def deblend(clip: vs.VideoNode, start: int = 0, rep: int | None = None, decimate: bool = True) -> vs.VideoNode:
     """
     Deblending function for blended AABBA patterns.
 
@@ -28,10 +27,6 @@ def deblend(clip: vs.VideoNode, start: int = 0,
 
     For more information, please refer to `this blogpost by torchlight
     <https://mechaweaponsvidya.wordpress.com/2012/09/13/adventures-in-deblending/>`_.
-
-    Dependencies:
-
-    * `RGSF <https://github.com/IFeelBloated/RGSF>`_ (optional: 32 bit clip)
 
     :param clip:        Clip to process.
     :param start:       First frame of the pattern (Default: 0).
@@ -59,5 +54,4 @@ def deblend(clip: vs.VideoNode, start: int = 0,
             return clip
 
     debl = core.std.FrameEval(clip, partial(deblend, clip=clip, rep=rep))
-    return core.std.DeleteFrames(debl, blends_b).std.AssumeFPS(fpsnum=24000, fpsden=1001) \
-        if decimate else debl
+    return core.std.DeleteFrames(debl, blends_b).std.AssumeFPS(fpsnum=24000, fpsden=1001) if decimate else debl
