@@ -209,8 +209,8 @@ def PARser(
 
     match dar:
         case Fraction(): new_dar = dar.numerator, dar.denominator
-        case Dar.WIDESCREEN: new_dar = 16, 9
-        case Dar.FULLSCREEN: new_dar = 4, 3
+        case Dar.WIDE: new_dar = 16, 9
+        case Dar.FULL: new_dar = 4, 3
         case Dar.SQUARE: return clip.std.SetFrameProps(_SARDen=1, _SARNum=1)
         case None: return PARser(clip, active_area, Dar.from_video(clip), height, region, return_result, func)
         case _: raise CustomValueError('Invalid DAR passed! Must be in {values} or None!', func, values=iter(Dar))
@@ -232,8 +232,8 @@ def PARser(
     props.update(_SARDen=sarden, _SARNum=sarnum)
 
     match dar:
-        case Dar.WIDESCREEN: props.update(amorph_width=clip.width * (sarden / sarnum))
-        case Dar.FULLSCREEN: props.update(amorph_height=clip.height * (sarnum / sarden))
+        case Dar.WIDE: props.update(amorph_width=clip.width * (sarden / sarnum))
+        case Dar.FULL: props.update(amorph_height=clip.height * (sarnum / sarden))
         # TODO: autoguess which to return based on the sarnum maybe?
         case _: props.update(
             amorph__note="Use your best judgment to pick one!",
