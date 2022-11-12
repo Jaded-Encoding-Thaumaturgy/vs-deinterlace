@@ -65,8 +65,7 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
     )
 
     output = props_clip.akarin.Expr(
-        'Y 2 % BF! BF@ x.fbAvg x.ftAvg ? TAVG! '
-        'TAVG@ 0 = x x TAVG@ BF@ x.ftAvg x.fbAvg ? + 2 / TAVG@ / * ?'
+        'Y 2 % BF! BF@ x.fbAvg x.ftAvg ? TAVG! TAVG@ 0 = x x TAVG@ BF@ x.ftAvg x.fbAvg ? + 2 / TAVG@ / * ?'
     )
 
     return depth(output, bits)
