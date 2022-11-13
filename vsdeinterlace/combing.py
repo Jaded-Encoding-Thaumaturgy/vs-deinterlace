@@ -49,7 +49,7 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
         try:
             from stgfunc import mean_plane_value
         except ModuleNotFoundError:
-            raise DependencyNotFoundError(fix_telecined_fades, 'stgfunc', 'cuda=True')
+            raise DependencyNotFoundError(fix_telecined_fades, 'stgfunc', reason='cuda=True')
 
         avg_props_clip = mean_plane_value(fields, [0.0, 1.0], cuda=True, prop='psmAvg', single_out=True, planes=0)
     else:

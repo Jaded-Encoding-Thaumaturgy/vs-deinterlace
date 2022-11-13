@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import warnings
-from fractions import Fraction
 from typing import Any
 
 from vskernels import Catrom, Kernel, KernelT
 from vstools import (
-    CustomValueError, DependencyNotFoundError, FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core,
-    get_w, get_y, vs
+    DependencyNotFoundError, FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core, get_w, get_y, vs
 )
 
 __all__ = [
