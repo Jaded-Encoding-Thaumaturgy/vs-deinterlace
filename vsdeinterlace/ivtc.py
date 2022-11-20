@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import gc
 import os
 import sys
-import time
-import warnings
 from pathlib import Path
 from typing import Any
 
-from vstools import FieldBased, FieldBasedT, core, get_render_progress, vs, CustomTypeError
+from vstools import CustomTypeError, FieldBased, FieldBasedT, core, get_render_progress, vs
 
 __all__ = [
     'sivtc',
@@ -87,10 +86,14 @@ def tivtc_vfr(
     :raises TypeError:          Invalid ``decimate`` argument is passed.
     """
 
-    if int(decimate) not in {-1, 0, 1}:
+    decimate = int(decimate)
+
+    if decimate not in {-1, 0, 1}:
         raise CustomTypeError(
             "Invalid 'decimate' argument. Must be True/False, their integer values, or -1!", tivtc_vfr
         )
+
+    tfm_args, tdecimate_args = tfm_args or {}, tdecimate_args or {}
 
     tfm_f = tdec_f = timecodes_f = Path()
 
@@ -102,45 +105,36 @@ def tivtc_vfr(
 
     _set_paths()
 
-    # TIVTC can't write files into directories that don't exist
     for p in (tfm_f, tdec_f, timecodes_f):
-        if not p.parent.exists():
-            p.parent.mkdir(parents=True)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        if p.exists() and p.stat().st_size == 0:
+            p.unlink(True)
 
     if not (tfm_f.exists() and tdec_f.exists()):
-        warnings.warn("tivtc_vfr: 'When calculating the matches and metrics for the first time, "
-                      "your previewer may error out! To fix this, simply refresh your previewer. "
-                      "If it still doesn't work, open the ``.ivtc`` directory and check if the files are 0kb. "
-                      "If they are, delete them and run the function again.'")
-
-        tfm_analysis = dict[str, Any](output=str(tfm_f), **(tfm_args or {}))
-        tdec_analysis = dict[str, Any](mode=4, output=str(tdec_f), **(tdecimate_args or {}))
-
-        ivtc_clip = core.tivtc.TFM(clip, **tfm_analysis)
-        ivtc_clip = core.tivtc.TDecimate(ivtc_clip, **tdec_analysis)
+        ivtc_clip = clip.tivtc.TFM(output=str(tfm_f), **tfm_args)
+        ivtc_clip = ivtc_clip.tivtc.TDecimate(mode=4, output=str(tdec_f), **tdecimate_args)
 
         with get_render_progress() as pr:
-            task = pr.add_task("Analyzing frames...", total=ivtc_clip.num_frames)
+            task = pr.add_task("calculating matches and metrics...", total=ivtc_clip.num_frames)
 
-            def _cb(n: int, total: int) -> None:
+            for _ in ivtc_clip.frames(close=True):
                 pr.update(task, advance=1)
 
-            with open(os.devnull, 'wb') as dn:
-                ivtc_clip.output(dn, progress_update=_cb)
+        ivtc_clip = None  # type: ignore
+        del ivtc_clip
 
-        del ivtc_clip  # Releases the clip, and in turn the filter (prevents an error)
+        gc.collect(0)
+        gc.collect(1)
+        gc.collect(2)
 
         _set_paths()
 
-    while not (tfm_f.stat().st_size > 0 and tdec_f.stat().st_size > 0):
-        time.sleep(0.5)  # Allow it to properly finish writing logs if necessary
+    if decimate != -1:
+        clip = clip.tivtc.TFM(**tfm_args, input=str(tfm_f))
 
-    tfm_args = (tfm_args or {}) | dict(input=str(tfm_in))
+    if decimate == 0:
+        return clip
 
-    tdecimate_args = (tdecimate_args or {}) | dict(
-        mode=5, hybrid=2, vfrDec=1, input=str(tdec_f), tfmIn=str(tfm_f), mkvOut=str(timecodes_f)
+    return clip.tivtc.TDecimate(
+        **tdecimate_args, mode=5, hybrid=2, vfrDec=1, input=str(tdec_f), tfmIn=str(tfm_f), mkvOut=str(timecodes_f)
     )
-
-    tfm = clip.tivtc.TFM(**tfm_args) if decimate != -1 else clip
-
-    return tfm.tivtc.TDecimate(**tdecimate_args) if int(decimate) != 0 else tfm
