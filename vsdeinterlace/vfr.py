@@ -12,6 +12,7 @@ __all__ = [
     'get_timecodes',
     'normalize_timecodes',
     'separate_norm_timecodes',
+    'accumulate_norm_timecodes',
     'assume_vfr',
     'generate_timecodes'
 ]
