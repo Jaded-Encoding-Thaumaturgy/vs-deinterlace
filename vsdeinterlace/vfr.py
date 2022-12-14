@@ -107,6 +107,22 @@ def separate_norm_timecodes(timecodes: dict[tuple[int, int], Fraction]) -> tuple
     return major_time, minor_fps
 
 
+def accumulate_norm_timecodes(timecodes: dict[tuple[int, int], Fraction]) -> tuple[
+    Fraction, dict[Fraction, list[tuple[int, int]]]
+]:
+    major_time, minor_fps = separate_norm_timecodes(timecodes)
+
+    acc_ranges = dict[Fraction, list[tuple[int, int]]]()
+
+    for k, v in minor_fps.items():
+        if v not in acc_ranges:
+            acc_ranges[v] = []
+
+        acc_ranges[v].append(k)
+
+    return major_time, acc_ranges
+
+
 def assume_vfr(
     clip: vs.VideoNode, timecodes: str | Path, den: int | None = None, func: FuncExceptT | None = None
 ) -> vs.VideoNode:
@@ -114,13 +130,14 @@ def assume_vfr(
 
     timecodes_ranges = normalize_timecodes(get_timecodes(clip, timecodes, den, func))
 
-    major_time, minor_fps = separate_norm_timecodes(timecodes_ranges)
+    major_time, minor_fps = accumulate_norm_timecodes(timecodes_ranges)
 
     assumed_clip = clip.std.AssumeFPS(None, major_time.numerator, major_time.denominator)
 
-    for fps_range, other_fps in minor_fps.items():
+    for other_fps, fps_ranges in minor_fps.items():
         assumed_clip = replace_ranges(
-            assumed_clip, clip.std.AssumeFPS(None, other_fps.numerator, other_fps.denominator), fps_range
+            assumed_clip, clip.std.AssumeFPS(None, other_fps.numerator, other_fps.denominator),
+            fps_ranges, False, False, False  # type: ignore
         )
 
     return assumed_clip
