@@ -35,11 +35,13 @@ def get_timecodes(
         assume = None
 
         timecodes_d = dict[tuple[int | None, int | None], Fraction]()
-        for line in _timecodes[1:]:
+        for line in _timecodes:
             if line.startswith('#'):
                 continue
-            elif line.startswith('Assume'):
+
+            if line.startswith('Assume'):
                 assume = _norm(_timecodes[0][7:])
+                continue
 
             starts, ends, _fps = line.split(',')
             timecodes_d[(int(starts), int(ends) + 1)] = _norm(_fps)
