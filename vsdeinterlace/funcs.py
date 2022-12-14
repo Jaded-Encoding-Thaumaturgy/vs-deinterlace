@@ -9,52 +9,8 @@ from vstools import (
 )
 
 __all__ = [
-    'descale_fields',
-
     'pulldown_credits'
 ]
-
-
-def descale_fields(
-    clip: vs.VideoNode, tff: bool | FieldBasedT = True,
-    width: int | None = None, height: int = 720,
-    kernel: KernelT = Catrom,
-    src_top: float = 0.0
-) -> vs.VideoNode:
-    """
-    Descale interwoven upscaled fields, also known as a cross conversion.
-
-    This function also sets a frameprop with the kernel that was used.
-
-    The kernel is set using an py:class:`vskernels.Kernel` object.
-    For more information, check the `vskernels documentation <https://vskernels.encode.moe/en/latest/>`_.
-
-    ``src_top`` allows you to to shift the clip prior to descaling.
-    This may be useful, as sometimes clips are shifted before or after the original upscaling.
-
-    :param clip:        Clip to process.
-    :param tff:         Top-field-first. `False` sets it to Bottom-Field-First.
-    :param width:       Native width. Will be automatically determined if set to `None`.
-    :param height:      Native height. Will be divided by two internally.
-    :param kernel:      py:class:`vskernels.Kernel` object used for the descaling.
-                        This can also be the string name of the kernel (Default: py:class:`vskernels.Catrom`).
-    :param src_top:     Shifts the clip vertically during the descaling.
-
-    :return:            Descaled GRAY clip.
-    """
-
-    height_field = int(height / 2)
-    width = width or get_w(height, clip.width / clip.height)
-
-    kernel = Kernel.ensure_obj(kernel)
-
-    clip = FieldBased.ensure_presence(clip, tff)
-
-    sep = core.std.SeparateFields(get_y(clip))
-    descaled = kernel.descale(sep, width, height_field, (src_top, 0))
-    weave_y = core.std.DoubleWeave(descaled)
-    weave_y = weave_y.std.SetFrameProp('scaler', data=f'{kernel.__class__.__name__} (Fields)')
-    return weave_y.std.SetFieldBased(0)[::2]
 
 
 def pulldown_credits(
