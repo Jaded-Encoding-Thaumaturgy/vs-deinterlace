@@ -3,10 +3,7 @@ from __future__ import annotations
 import warnings
 from typing import Any
 
-from vskernels import Catrom, Kernel, KernelT
-from vstools import (
-    DependencyNotFoundError, FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core, get_w, get_y, vs
-)
+from vstools import DependencyNotFoundError, FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core, vs
 
 __all__ = [
     'pulldown_credits'
