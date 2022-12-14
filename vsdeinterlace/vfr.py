@@ -10,7 +10,7 @@ from vstools import (
 
 __all__ = [
     'get_timecodes',
-    'normalize_timecodes',
+    'normalize_timecodes', 'normalize_range_timecodes',
     'separate_norm_timecodes',
     'accumulate_norm_timecodes',
     'assume_vfr',
@@ -36,6 +36,7 @@ def get_timecodes(
         assume = None
 
         timecodes_d = dict[tuple[int | None, int | None], Fraction]()
+
         for line in _timecodes:
             if line.startswith('#'):
                 continue
@@ -47,16 +48,7 @@ def get_timecodes(
             starts, ends, _fps = line.split(',')
             timecodes_d[(int(starts), int(ends) + 1)] = _norm(_fps)
 
-        norm_timecodes = [assume] * clip.num_frames if assume else list[Fraction]()
-
-        for (startn, endn), fps in timecodes_d.items():
-            start = max(fallback(startn, 0), 0)
-            end = fallback(endn, clip.num_frames)
-
-            if end > len(norm_timecodes):
-                norm_timecodes += [fps] * (end - len(norm_timecodes))
-
-            norm_timecodes[start:end + 1] = [fps] * (end - start)
+        norm_timecodes = normalize_range_timecodes(timecodes_d, clip.num_frames, assume)
     elif 'v2' in version:
         timecodes_l = [float(t) for t in _timecodes if not t.startswith('#')]
         norm_timecodes = [
@@ -91,6 +83,23 @@ def normalize_timecodes(timecodes: list[Fraction]) -> dict[tuple[int, int], Frac
             timecodes_ranges[start, i + 1] = fps
 
     return timecodes_ranges
+
+
+def normalize_range_timecodes(
+    timecodes: dict[tuple[int | None, int | None], Fraction], end: int, assume: Fraction | None = None
+) -> list[Fraction]:
+    norm_timecodes = [assume] * end if assume else list[Fraction]()
+
+    for (startn, endn), fps in timecodes.items():
+        start = max(fallback(startn, 0), 0)
+        end = fallback(endn, end)
+
+        if end > len(norm_timecodes):
+            norm_timecodes += [fps] * (end - len(norm_timecodes))
+
+        norm_timecodes[start:end + 1] = [fps] * (end - start)
+
+    return norm_timecodes
 
 
 def separate_norm_timecodes(timecodes: dict[tuple[int, int], Fraction]) -> tuple[
