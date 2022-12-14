@@ -50,7 +50,10 @@ def get_timecodes(
 
         for (startn, endn), fps in timecodes_d.items():
             start = max(fallback(startn, 0), 0)
-            end = min(fallback(endn, clip.num_frames), clip.num_frames)
+            end = fallback(endn, clip.num_frames)
+
+            if end > len(norm_timecodes):
+                norm_timecodes += [fps] * (end - len(norm_timecodes))
 
             norm_timecodes[start:end + 1] = [fps] * (end - start)
     elif 'v2' in version:
@@ -65,7 +68,7 @@ def get_timecodes(
     if len(norm_timecodes) != clip.num_frames:
         raise FramesLengthError(
             func, '', 'timecodes file length mismatch with clip\'s length!',
-            reason=(len(norm_timecodes), clip.num_frames)
+            reason=dict(timecodes=end, clip=clip.num_frames)
         )
 
     return norm_timecodes
