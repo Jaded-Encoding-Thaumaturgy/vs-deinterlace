@@ -46,7 +46,7 @@ def fix_telecined_fades(
     func = func or fix_telecined_fades
 
     if not aka_expr_available:
-        raise ExprVars._get_akarin_err('You need the akarin plugin to run this function!')(func=func)
+        raise ExprVars._get_akarin_err()(func=func)
 
     clip = FieldBased.ensure_presence(clip, tff, func)
 
