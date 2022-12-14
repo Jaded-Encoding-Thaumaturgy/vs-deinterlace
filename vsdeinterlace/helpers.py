@@ -14,15 +14,16 @@ def check_ivtc_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
 
     clip = sivtc(clip, pattern).tdm.IsCombed()
 
-    p = get_render_progress()
-    task = p.add_task(f"Checking pattern {pattern}...", total=clip.num_frames)
+    with get_render_progress() as p:
+        task = p.add_task(f"Checking pattern {pattern}...", total=clip.num_frames)
 
-    for f in clip[::4].frames(close=True):
-        if get_prop(f, '_Combed', int):
-            print(f"check_patterns: 'Combing found with pattern {pattern}!'")
-            return False
+        for f in clip[::4].frames(close=True):
+            if get_prop(f, '_Combed', int):
+                print(f"check_patterns: 'Combing found with pattern {pattern}!'")
+                return False
 
-        p.update(task, advance=1)
+            p.update(task, advance=1)
 
     print(f"check_patterns: 'Clean clip found with pattern {pattern}!'")
+
     return True
