@@ -61,7 +61,7 @@ def get_timecodes(
     if len(norm_timecodes) != clip.num_frames:
         raise FramesLengthError(
             func, '', 'timecodes file length mismatch with clip\'s length!',
-            reason=dict(timecodes=end, clip=clip.num_frames)
+            reason=dict(timecodes=len(norm_timecodes), clip=clip.num_frames)
         )
 
     return norm_timecodes
