@@ -32,14 +32,19 @@ def get_timecodes(
         def _norm(xd: str) -> Fraction:
             return Fraction(int(denominator * float(xd)), denominator)
 
-        assume = _norm(_timecodes[0][7:])
+        assume = None
 
-        timecodes_d = dict[tuple[int | None, int | None], Fraction]({(None, None): assume})
+        timecodes_d = dict[tuple[int | None, int | None], Fraction]()
         for line in _timecodes[1:]:
+            if line.startswith('#'):
+                continue
+            elif line.startswith('Assume'):
+                assume = _norm(_timecodes[0][7:])
+
             starts, ends, _fps = line.split(',')
             timecodes_d[(int(starts), int(ends) + 1)] = _norm(_fps)
 
-        norm_timecodes = list[Fraction]()
+        norm_timecodes = [assume] * clip.num_frames if assume else list[Fraction]()
 
         for (startn, endn), fps in timecodes_d.items():
             start = max(fallback(startn, 0), 0)
@@ -47,7 +52,7 @@ def get_timecodes(
 
             norm_timecodes[start:end + 1] = [fps] * (end - start)
     elif 'v2' in version:
-        timecodes_l = list(map(float, _timecodes))
+        timecodes_l = [float(t) for t in _timecodes if not t.startswith('#')]
         norm_timecodes = [
             Fraction(int(denominator / float(f'{round((x - y) * 100, 4) / 100000:.08f}'[:-1])), denominator)
             for x, y in zip(timecodes_l[1:], timecodes_l[:-1])
