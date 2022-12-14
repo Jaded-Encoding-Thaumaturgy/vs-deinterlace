@@ -202,8 +202,6 @@ def generate_timecodes(clip: vs.VideoNode, out: str | Path, format: int = 2, fun
     else:
         raise CustomValueError('timecodes format not supported!', func, format)
 
-    out_text.append('\n')
-
     out_path.unlink(True)
     out_path.touch()
-    out_path.write_text('\n'.join(out_text))
+    out_path.write_text('\n'.join(out_text + ['']))
