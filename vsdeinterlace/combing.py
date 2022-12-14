@@ -1,8 +1,10 @@
 from __future__ import annotations
+from typing import Literal
 
+from vsexprtools import norm_expr, aka_expr_available, ExprVars
 from vstools import (
-    CustomOverflowError, DependencyNotFoundError, FieldBased, FieldBasedT, check_variable_format, core, depth,
-    get_depth, get_neutral_value, scale_value, vs
+    CustomOverflowError, FieldBased, FieldBasedT, FuncExceptT, PlanesT, check_variable_format, core, get_neutral_value,
+    normalize_planes, scale_value, vs
 )
 
 __all__ = [
@@ -12,7 +14,10 @@ __all__ = [
 ]
 
 
-def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = None, cuda: bool = False) -> vs.VideoNode:
+def fix_telecined_fades(
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None = None, fade_type: Literal[1, 2] = 1,
+    planes: PlanesT = None, func: FuncExceptT | None = None
+) -> vs.VideoNode:
     """
     Give a mathematically perfect solution to fades made *after* telecining (which made perfect IVTC impossible).
 
@@ -38,37 +43,36 @@ def fix_telecined_fades(clip: vs.VideoNode, tff: bool | FieldBasedT | None = Non
 
     :raises UndefinedFieldBasedError:       No automatic ``tff`` can be determined.
     """
+    func = func or fix_telecined_fades
 
-    bits = get_depth(clip)
+    if not aka_expr_available:
+        raise ExprVars._get_akarin_err('You need the akarin plugin to run this function!')(func=func)
 
-    clip = FieldBased.ensure_presence(clip, tff, fix_telecined_fades)
+    clip = FieldBased.ensure_presence(clip, tff, func)
 
     fields = clip.std.Limiter().std.SeparateFields()
 
-    if cuda:
-        try:
-            from stgfunc import mean_plane_value
-        except ModuleNotFoundError:
-            raise DependencyNotFoundError(fix_telecined_fades, 'stgfunc', reason='cuda=True')
+    planes = normalize_planes(clip, planes)
 
-        avg_props_clip = mean_plane_value(fields, [0.0, 1.0], cuda=True, prop='psmAvg', single_out=True, planes=0)
-    else:
-        avg_props_clip = fields.psm.PlaneAverage(value_exclude=[0.0, 1.0])  # type: ignore
+    for i in planes:
+        fields = fields.std.PlaneStats(None, i, f'PAvg{i}')
 
-    def props_bodge(f: list[vs.VideoFrame], n: int) -> vs.VideoFrame:
-        fout = f[0].copy()
-        fout.props.update(ftAvg=f[1].props.psmAvg, fbAvg=f[2].props.psmAvg)
-        return fout
-
-    props_clip = clip.std.ModifyFrame(
-        [clip, avg_props_clip[::2], avg_props_clip[1::2]], props_bodge
+    props_clip = core.akarin.PropExpr(
+        [clip, fields[::2], fields[1::2]], lambda: {  # type: ignore[misc]
+            f'f{t}Avg{i}': f'{c}.PAvg{i}'  # type: ignore[has-type]
+            for t, c in ['ty', 'bz']
+            for i in planes  # type: ignore
+        }
     )
 
-    output = props_clip.akarin.Expr(
-        'Y 2 % BF! BF@ x.fbAvg x.ftAvg ? TAVG! TAVG@ 0 = x x TAVG@ BF@ x.ftAvg x.fbAvg ? + 2 / TAVG@ / * ?'
-    )
+    fix = 'x TAVG@ BF@ x.ftAvg{i} x.fbAvg{i} ? + 2 / TAVG@ / *'
 
-    return depth(output, bits)
+    return norm_expr(
+        props_clip,
+        'Y 2 % BF! BF@ x.fbAvg{i} x.ftAvg{i} ? TAVG! '
+        + (f'TAVG@ 0 = x {fix} ?' if fade_type == 2 else fix),
+        planes, i=planes, force_akarin=func
+    )
 
 
 def vinverse(clip: vs.VideoNode, sstr: float = 2.0, amount: int = 128, scale: float = 1.5) -> vs.VideoNode:
