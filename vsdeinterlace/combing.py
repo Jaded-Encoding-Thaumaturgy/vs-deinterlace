@@ -1,10 +1,12 @@
 from __future__ import annotations
-from typing import Literal
 
-from vsexprtools import norm_expr, aka_expr_available, ExprVars
+from typing import Literal, cast
+
+from vsexprtools import ExprVars, aka_expr_available, norm_expr
+from vsrgtools import sbr
 from vstools import (
-    CustomOverflowError, FieldBased, FieldBasedT, FuncExceptT, PlanesT, check_variable_format, core, get_neutral_value,
-    normalize_planes, scale_value, vs
+    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, PlanesT, core, get_neutral_value, normalize_planes,
+    scale_8bit, vs
 )
 
 __all__ = [
@@ -75,47 +77,58 @@ def fix_telecined_fades(
     )
 
 
-def vinverse(clip: vs.VideoNode, sstr: float = 2.0, amount: int = 128, scale: float = 1.5) -> vs.VideoNode:
-    """
-    Clean up residual combing after a deinterlacing pass.
+class Vinverse(CustomEnum):
+    V1 = object()
+    V2 = object()
+    MASKED = object()
+    MASKEDV1 = object()
+    MASKEDV2 = object()
 
-    This is Setsugen no ao's implementation, adopted into vsdeinterlace.
+    def __call__(
+        self, clip: vs.VideoNode, sstr: float = 2.7, amount: int = 255, scale: float = 0.25,
+        mode: ConvMode = ConvMode.VERTICAL, planes: PlanesT = None, vinverse2: bool = False
+    ) -> vs.VideoNode:
+        if amount <= 0:
+            return clip
 
-    :param clip:        Clip to process.
-    :param sstr:        Contrasharpening strength. Increase this if you find
-                        the decombing blurs the image a bit too much.
-    :param amount:      Maximum difference allowed between the original pixels and adjusted pixels.
-                        Scaled to input clip's depth. Set to 255 to effectively disable this.
-    :param scale:       Scale amount for vertical sharp * vertical blur.
+        neutral = get_neutral_value(clip)
 
-    :return:            Clip with residual combing largely removed.
+        expr = f'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
+        expr += f'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scale} * D1A@ D2A@ < D1@ D2@ ? ? y + '
 
-    :raises ValueError: ``amount`` is set above 255.
-    """
+        if self in {Vinverse.V1, Vinverse.MASKEDV1}:
+            blur = clip.std.Convolution([50, 99, 50], mode=mode, planes=planes)
+            blur2 = blur.std.Convolution([1, 4, 6, 4, 1], mode=mode, planes=planes)
+        elif self in {Vinverse.V2, Vinverse.MASKEDV2}:
+            blur = sbr(clip, mode=mode, planes=planes)
+            blur2 = blur.std.Convolution([1, 2, 1], mode=mode, planes=planes)
 
-    assert check_variable_format(clip, "vinverse")
+        if self in {Vinverse.MASKED, Vinverse.MASKEDV1, Vinverse.MASKEDV2}:
+            if self is Vinverse.MASKED:
+                find_combs = norm_expr(clip, f'x x 2 * x[0,-1] x[0,1] + + 4 / - {neutral} +', planes)
+                decomb = norm_expr(
+                    [find_combs, clip],
+                    'x x 2 * x[0,-1] x[0,1] + + 4 / - B! y B@ x {n} - * 0 '
+                    '< {n} B@ abs x {n} - abs < B@ {n} + x ? ? - {n} +', n=neutral
+                )
+            else:
+                decomb = norm_expr(
+                    [clip, blur, blur2], 'x x 2 * y + 4 / - {n} + FC@ FC@ FC@ 2 * y z - {n} + + 4 / - B! '
+                    'x B@ FC@ {n} - * 0 < {n} B@ abs FC@ {n} - abs < B@ {n} + FC@ ? ? - {n} +', n=neutral
+                )
 
-    if amount > 255:
-        raise CustomOverflowError("'amount' may not be set higher than 255!", vinverse)
+            return norm_expr(
+                [clip, decomb], f'{scale_8bit(clip, amount)} a! y y y y 2 * y[0,-1] y[0,1] + + 4 / - {sstr} '
+                '* + y - {n} + D1! x y - {n} + D2! D1@ {n} - D2@ {n} - * 0 < D1@ {n} - abs D2@ {n} - abs < D1@ '
+                'D2@ ? {n} - {scale} * {n} + D1@ {n} - abs D2@ {n} - abs < D1@ D2@ ? ? {n} - + merge! '
+                'x a@ + merge@ < x a@ + x a@ - merge@ > x a@ - merge@ ? ?', n=neutral
+            )
 
-    neutral = get_neutral_value(clip)
+        if amount < 255:
+            amn = scale_8bit(clip, amount)
+            expr += f'LIM! x {amn} + LIM@ < x {amn} + x {amn} - LIM@ > x {amn} - LIM@ ? ?'
 
-    # Expression to find combing and separate it from the rest of the clip
-    find_combs = clip.akarin.Expr(f'{neutral} n! x x 2 * x[0,-1] x[0,1] + + 4 / - n@ +')
+        return norm_expr([clip, blur, blur2], expr, planes)
 
-    # Expression to decomb it (creates blending)
-    decomb = core.akarin.Expr(
-        [find_combs, clip],
-        f'{neutral} n! x 2 * x[0,-1] x[0,1] + + 4 / blur! y x blur@ - x n@ - * 0 < n@ x blur@ '
-        ' - abs x n@ - abs < x blur@ - n@ + x ? ? - n@ +'
-    )
 
-    # Final expression to properly merge it and avoid creating too much damage
-    return core.akarin.Expr(
-        [clip, decomb],
-        f'{neutral} n! {scale_value(amount, 8, clip.format.bits_per_sample)} a! y y y y 2 * y[0,-1]'
-        f' y[0,1] + + 4 / - {sstr} * + y - n@ + sdiff! x y - n@ + diff! sdiff@ n@ - diff@ n@ - '
-        f'* 0 < sdiff@ n@ - abs diff@ n@ - abs < sdiff@ diff@ ? n@ - {scale} * n@ + sdiff@ n@ '
-        '- abs diff@ n@ - abs < sdiff@ diff@ ? ? n@ - + merge! x a@ + merge@ < x a@ + x a@ - '
-        'merge@ > x a@ - merge@ ? ?'
-    )
+vinverse = cast(Vinverse, Vinverse.V1)
