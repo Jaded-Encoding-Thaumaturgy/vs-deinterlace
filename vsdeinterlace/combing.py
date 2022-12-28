@@ -104,12 +104,15 @@ class Vinverse(CustomEnum):
             blur2 = blur.std.Convolution([1, 2, 1], mode=mode, planes=planes)
 
         if self in {Vinverse.MASKED, Vinverse.MASKEDV1, Vinverse.MASKEDV2}:
+            search_str = 'x[-1,0] x[1,0]' if mode == ConvMode.HORIZONTAL else 'x[0,-1] x[0,1]'
+            mask_search_str = search_str.replace('x', 'y')
+            
             if self is Vinverse.MASKED:
-                find_combs = norm_expr(clip, f'x x 2 * x[0,-1] x[0,1] + + 4 / - {neutral} +', planes)
+                find_combs = norm_expr(clip, f'x x 2 * {search_str} + + 4 / - {neutral} +', planes)
                 decomb = norm_expr(
                     [find_combs, clip],
-                    'x x 2 * x[0,-1] x[0,1] + + 4 / - B! y B@ x {n} - * 0 '
-                    '< {n} B@ abs x {n} - abs < B@ {n} + x ? ? - {n} +', n=neutral
+                    'x x 2 * {search_str} + + 4 / - B! y B@ x {n} - * 0 '
+                    '< {n} B@ abs x {n} - abs < B@ {n} + x ? ? - {n} +', n=neutral, search_str=search_str
                 )
             else:
                 decomb = norm_expr(
@@ -118,10 +121,10 @@ class Vinverse(CustomEnum):
                 )
 
             return norm_expr(
-                [clip, decomb], f'{scale_8bit(clip, amount)} a! y y y y 2 * y[0,-1] y[0,1] + + 4 / - {sstr} '
+                [clip, decomb], f'{scale_8bit(clip, amount)} a! y y y y 2 * {mask_search_str} + + 4 / - {sstr} '
                 '* + y - {n} + D1! x y - {n} + D2! D1@ {n} - D2@ {n} - * 0 < D1@ {n} - abs D2@ {n} - abs < D1@ '
                 'D2@ ? {n} - {scale} * {n} + D1@ {n} - abs D2@ {n} - abs < D1@ D2@ ? ? {n} - + merge! '
-                'x a@ + merge@ < x a@ + x a@ - merge@ > x a@ - merge@ ? ?', n=neutral
+                'x a@ + merge@ < x a@ + x a@ - merge@ > x a@ - merge@ ? ?', n=neutral, scale=scale
             )
 
         if amount < 255:
