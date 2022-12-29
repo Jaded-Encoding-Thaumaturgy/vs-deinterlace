@@ -106,7 +106,7 @@ class Vinverse(CustomEnum):
         if self in {Vinverse.MASKED, Vinverse.MASKEDV1, Vinverse.MASKEDV2}:
             search_str = 'x[-1,0] x[1,0]' if mode == ConvMode.HORIZONTAL else 'x[0,-1] x[0,1]'
             mask_search_str = search_str.replace('x', 'y')
-            
+
             if self is Vinverse.MASKED:
                 find_combs = norm_expr(clip, f'x x 2 * {search_str} + + 4 / - {neutral} +', planes)
                 decomb = norm_expr(
