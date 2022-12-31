@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import cast
 
 from vsexprtools import ExprVars, aka_expr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, PlanesT, core, get_neutral_value, normalize_planes,
+    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, get_neutral_value,
     scale_8bit, vs
 )
 
@@ -17,29 +17,20 @@ __all__ = [
 
 
 def fix_telecined_fades(
-    clip: vs.VideoNode, tff: bool | FieldBasedT | None = None, fade_type: Literal[1, 2] = 1,
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None = None, colors: float | list[float] = 0.0,
     planes: PlanesT = None, func: FuncExceptT | None = None
 ) -> vs.VideoNode:
     """
     Give a mathematically perfect solution to fades made *after* telecining (which made perfect IVTC impossible).
 
-    This is an improved version of the Fix-Telecined-Fades plugin
-    that deals with overshoot/undershoot by adding a check.
+    This is an improved version of the Fix-Telecined-Fades plugin.
 
     Make sure to run this *after* IVTC/deinterlacing!
-
-    If the value surpases thr * original value, it will not affect any pixels in that frame
-    to avoid it damaging frames it shouldn't need to. This helps a lot with orphan fields as well,
-    which would otherwise create massive swings in values, sometimes messing up the fade fixing.
-
-    .. warning::
-        | If you pass your own float clip, you'll want to make sure to properly dither it down after.
-        | If you don't do this, you'll run into some serious issues!
 
     :param clip:                            Clip to process.
     :param tff:                             Top-field-first. `False` sets it to Bottom-Field-First.
                                             If `None`, get the field order from the _FieldBased prop.
-    :param cuda:                            Use cupy for certain calculations. `False` uses numpy instead.
+    :param colors:                          Color offset for the plane average.
 
     :return:                                Clip with fades (and only fades) accurately deinterlaced.
 
@@ -52,29 +43,28 @@ def fix_telecined_fades(
 
     clip = FieldBased.ensure_presence(clip, tff, func)
 
-    fields = clip.std.Limiter().std.SeparateFields()
+    f = FunctionUtil(clip, func, planes, (vs.GRAY, vs.YUV), 32)
 
-    planes = normalize_planes(clip, planes)
+    fields = f.work_clip.std.Limiter().std.SeparateFields()
 
-    for i in planes:
-        fields = fields.std.PlaneStats(None, i, f'PAvg{i}')
+    for i in f.norm_planes:
+        fields = fields.std.PlaneStats(None, i, f'P{i}')
 
     props_clip = core.akarin.PropExpr(
-        [clip, fields[::2], fields[1::2]], lambda: {  # type: ignore[misc]
-            f'f{t}Avg{i}': f'{c}.PAvg{i}'  # type: ignore[has-type]
+        [f.work_clip, fields[::2], fields[1::2]], lambda: {  # type: ignore[misc]
+            f'f{t}Avg{i}': f'{c}.P{i}Average {color} -'  # type: ignore[has-type]
             for t, c in ['ty', 'bz']
-            for i in planes  # type: ignore
+            for i, color in zip(f.norm_planes, f.norm_seq(colors))
         }
     )
 
-    fix = 'x TAVG@ BF@ x.ftAvg{i} x.fbAvg{i} ? + 2 / TAVG@ / *'
-
-    return norm_expr(
-        props_clip,
-        'Y 2 % BF! BF@ x.fbAvg{i} x.ftAvg{i} ? TAVG! '
-        + (f'TAVG@ 0 = x {fix} ?' if fade_type == 2 else fix),
-        planes, i=planes, force_akarin=func
+    fix = norm_expr(
+        props_clip, 'Y 2 % BF! BF@ x.fbAvg{i} x.ftAvg{i} ? AVG! '
+        'AVG@ 0 = x x {color} - AVG@ BF@ x.ftAvg{i} x.fbAvg{i} ? + 2 / AVG@ / * ? {color} +',
+        planes, i=f.norm_planes, color=colors, force_akarin=func
     )
+
+    return f.return_clip(fix)
 
 
 class Vinverse(CustomEnum):
