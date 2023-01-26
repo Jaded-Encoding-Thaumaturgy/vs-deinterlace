@@ -76,7 +76,7 @@ class Vinverse(CustomEnum):
 
     def __call__(
         self, clip: vs.VideoNode, sstr: float = 2.7, amount: int = 255, scale: float = 0.25,
-        mode: ConvMode = ConvMode.VERTICAL, planes: PlanesT = None, vinverse2: bool = False
+        mode: ConvMode = ConvMode.VERTICAL, planes: PlanesT = None
     ) -> vs.VideoNode:
         if amount <= 0:
             return clip
