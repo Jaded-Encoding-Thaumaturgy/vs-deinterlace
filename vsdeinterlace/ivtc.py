@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from vstools import CustomTypeError, FieldBased, FieldBasedT, core, get_render_progress, vs
+from vstools import CustomTypeError, FieldBased, FieldBasedT, get_render_progress, vs
 
 __all__ = [
     'sivtc',
@@ -14,7 +14,7 @@ __all__ = [
 ]
 
 
-def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True, decimate: bool = True) -> vs.VideoNode:
+def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True) -> vs.VideoNode:
     """
     Simplest form of a fieldmatching function.
 
@@ -24,17 +24,19 @@ def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True, 
     :param clip:        Clip to process.
     :param pattern:     First frame of any clean-combed-combed-clean-clean sequence.
     :param tff:         Top-Field-First.
-    :param decimate:    Drop a frame every 5 frames to get down to 24000/1001.
 
     :return:            IVTC'd clip.
     """
 
-    pattern = pattern % 5
-
-    defivtc = core.std.SeparateFields(clip, tff=FieldBased.from_param(tff).field).std.DoubleWeave()
     selectlist = [[0, 3, 6, 8], [0, 2, 5, 8], [0, 2, 4, 7], [2, 4, 6, 9], [1, 4, 6, 8]]
-    dec = core.std.SelectEvery(defivtc, 10, selectlist[pattern]) if decimate else defivtc
-    return dec.std.SetFieldBased(0).std.SetFrameProp(prop='SIVTC_pattern', intval=pattern)
+
+    patterns = selectlist[pattern % len(selectlist)]
+
+    defivtc = clip.std.SeparateFields(tff=FieldBased(tff).field).std.DoubleWeave()
+
+    return FieldBased.ensure_presence(
+        defivtc.std.SelectEvery(10, patterns), FieldBased.PROGRESSIVE
+    )
 
 
 main_file = os.path.realpath(sys.argv[0]) if sys.argv[0] else None
