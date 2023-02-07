@@ -4,4 +4,3 @@ from .funcs import *  # noqa: F401, F403
 from .helpers import *  # noqa: F401, F403
 from .ivtc import *  # noqa: F401, F403
 from .utils import *  # noqa: F401, F403
-from .vfr import *  # noqa: F401, F403
