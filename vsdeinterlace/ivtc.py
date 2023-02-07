@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from vstools import CustomTypeError, FieldBased, FieldBasedT, get_render_progress, vs
+from vstools import CustomTypeError, FieldBased, FieldBasedT, clip_async_render, vs
 
 __all__ = [
     'sivtc',
@@ -126,11 +126,7 @@ def tivtc_2pass(
         ivtc_clip = clip.tivtc.TFM(output=str(tfm_f), **tfm_pass1)
         ivtc_clip = ivtc_clip.tivtc.TDecimate(**tdecimate_pass1, output=str(tdec_f))
 
-        with get_render_progress() as pr:
-            task = pr.add_task("calculating matches and metrics...", total=ivtc_clip.num_frames)
-
-            for _ in ivtc_clip.frames(close=True):
-                pr.update(task, advance=1)
+        clip_async_render(ivtc_clip, None, "Calculating matches and metrics...")
 
         ivtc_clip = None  # type: ignore
         del ivtc_clip
