@@ -7,8 +7,8 @@ from typing import SupportsFloat
 
 from vskernels import BicubicDidee, Catrom
 from vstools import (
-    CustomError, CustomValueError, Dar, FieldBased, FieldBasedT, FuncExceptT, Region, core, depth, fallback, get_prop,
-    get_w, mod2, mod4, vs
+    CustomError, CustomValueError, Dar, FieldBased, FieldBasedT, FuncExceptT, Region, core, depth, get_prop, get_w,
+    mod2, mod4, vs
 )
 
 from .helpers import check_ivtc_pattern
