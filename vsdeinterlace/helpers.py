@@ -12,7 +12,7 @@ def check_ivtc_pattern(clip: vs.VideoNode, pattern: int = 0) -> bool:
 
     from .ivtc import sivtc
 
-    clip = sivtc(clip, pattern).tdm.IsCombed()
+    clip: vs.VideoNode = sivtc(clip, pattern).tdm.IsCombed()  # type: ignore
 
     with get_render_progress() as p:
         task = p.add_task(f"Checking pattern {pattern}...", total=clip.num_frames)

@@ -62,7 +62,7 @@ def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) ->
     height = clip.height * scale
     width = get_w(height, clip.width / clip.height)
 
-    clip = clip.tdm.IsCombed()
+    clip = clip.tdm.IsCombed()  # type: ignore
     clip = Catrom().scale(clip, width, height)
 
     # Downscaling for the cycle clips
@@ -205,7 +205,7 @@ def PARser(
     :raises ValueError:         Invalid :py:attr:`vstools.Region` is passed.
     """
 
-    func = fallback(func, PARser)
+    func = func or PARser
 
     match dar:
         case Fraction(): new_dar = dar.numerator, dar.denominator
