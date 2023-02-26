@@ -5,7 +5,7 @@ from typing import cast
 from vsexprtools import ExprVars, aka_expr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, get_neutral_value,
+    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, get_neutral_values,
     scale_8bit, vs
 )
 
@@ -81,7 +81,7 @@ class Vinverse(CustomEnum):
         if amount <= 0:
             return clip
 
-        neutral = get_neutral_value(clip)
+        neutral = get_neutral_values(clip)
 
         expr = f'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
         expr += f'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scale} * D1A@ D2A@ < D1@ D2@ ? ? y + '
@@ -98,7 +98,7 @@ class Vinverse(CustomEnum):
             mask_search_str = search_str.replace('x', 'y')
 
             if self is Vinverse.MASKED:
-                find_combs = norm_expr(clip, f'x x 2 * {search_str} + + 4 / - {neutral} +', planes)
+                find_combs = norm_expr(clip, f'x x 2 * {search_str} + + 4 / - {{n}} +', planes, n=neutral)
                 decomb = norm_expr(
                     [find_combs, clip],
                     'x x 2 * {search_str} + + 4 / - B! y B@ x {n} - * 0 '
@@ -106,7 +106,7 @@ class Vinverse(CustomEnum):
                 )
             else:
                 decomb = norm_expr(
-                    [clip, blur, blur2], 'x x 2 * y + 4 / - {n} + FC@ FC@ FC@ 2 * y z - {n} + + 4 / - B! '
+                    [clip, blur, blur2], 'x x 2 * y + 4 / - {n} + FC! FC@ FC@ 2 * y z - {n} + + 4 / - B! '
                     'x B@ FC@ {n} - * 0 < {n} B@ abs FC@ {n} - abs < B@ {n} + FC@ ? ? - {n} +', n=neutral
                 )
 
