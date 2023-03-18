@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from vsexprtools import ExprVars, aka_expr_available, norm_expr
+from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
     ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, get_neutral_values,
@@ -38,7 +38,7 @@ def fix_telecined_fades(
     """
     func = func or fix_telecined_fades
 
-    if not aka_expr_available:
+    if not complexpr_available:
         raise ExprVars._get_akarin_err()(func=func)
 
     clip = FieldBased.ensure_presence(clip, tff, func)
