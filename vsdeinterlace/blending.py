@@ -3,6 +3,7 @@ from __future__ import annotations
 import warnings
 from functools import partial
 
+from vsexprtools import expr_func
 from vsrgtools import repair
 from vstools import core, vs
 
@@ -49,7 +50,7 @@ def deblend(clip: vs.VideoNode, start: int = 0, rep: int | None = None, decimate
         else:
             if n in blends_a:
                 c, cd, da, a = clip[n - 1], clip[n], clip[n + 1], clip[n + 2]
-                debl = core.akarin.Expr([c, cd, da, a], expr_cd)
+                debl = expr_func([c, cd, da, a], expr_cd)
                 return repair(debl, c, rep) if rep else debl
             return clip
 
