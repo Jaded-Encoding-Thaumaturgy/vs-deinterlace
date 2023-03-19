@@ -5,8 +5,8 @@ from typing import cast
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, get_neutral_values,
-    scale_8bit, vs
+    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, depth, expect_bits,
+    get_neutral_values, scale_8bit, vs
 )
 
 __all__ = [
@@ -81,6 +81,8 @@ class Vinverse(CustomEnum):
         if amount <= 0:
             return clip
 
+        clip, bits = expect_bits(clip, 32)
+
         neutral = get_neutral_values(clip)
 
         expr = f'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
@@ -121,7 +123,7 @@ class Vinverse(CustomEnum):
             amn = scale_8bit(clip, amount)
             expr += f'LIM! x {amn} + LIM@ < x {amn} + x {amn} - LIM@ > x {amn} - LIM@ ? ?'
 
-        return norm_expr([clip, blur, blur2], expr, planes)
+        return depth(norm_expr([clip, blur, blur2], expr, planes), bits)
 
 
 vinverse = cast(Vinverse, Vinverse.V1)
