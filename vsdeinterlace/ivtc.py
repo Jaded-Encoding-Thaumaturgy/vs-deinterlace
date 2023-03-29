@@ -7,12 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from vstools import (
-    CustomEnum, CustomTypeError, FieldBased, FieldBasedT, VSFunctionKwArgs, clip_async_render, core, join, vs
+    CustomEnum, CustomTypeError, FieldBased, FieldBasedT, InvalidFramerateError, VSFunctionKwArgs, clip_async_render,
+    core, join, vs
 )
 
+from .blending import deblend
+
 __all__ = [
-    'sivtc',
     'IVTCycles',
+    'sivtc', 'jivtc',
     'tivtc_2pass', 'tivtc_vfr'
 ]
 
@@ -56,6 +59,41 @@ def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True) 
 
     return FieldBased.PROGRESSIVE.apply(ivtc)
 
+
+def jivtc(
+    src: vs.VideoNode, pattern: int, tff: bool = True, chroma_only: bool = True,
+    postprocess: VSFunctionKwArgs = deblend, postdecimate: bool = True, **kwargs: Any  # type: ignore
+) -> vs.VideoNode:
+    """
+    This function should only be used when a normal ivtc or ivtc + bobber leaves chroma blend to a every fourth frame.
+    You can disable chroma_only to use in luma as well, but it is not recommended.
+
+    :param src:             Source clip. Has to be 60i.
+    :param pattern:         First frame of any clean-combed-combed-clean-clean sequence.
+    :param tff:             Set top field first (True) or bottom field first (False).
+    :param chroma_only:     Decide whether luma too will be processed.
+    :param postprocess:     Function to run after second decimation. Should be either a bobber or a deblender.
+    :param postdecimate:    If the postprocess function doesn't decimate itself, put True.
+
+    :return:            Inverse Telecined clip.
+    """
+
+    InvalidFramerateError.check(jivtc, src, (30000, 1001))
+
+    ivtced = core.std.SeparateFields(src, tff=tff).std.DoubleWeave()
+    ivtced = IVTCycles.cycle_10.decimate(ivtced, pattern)
+
+    pprocess = postprocess(src if postdecimate else ivtced, **kwargs)
+
+    if postdecimate:
+        pprocess = IVTCycles.cycle_05.decimate(pprocess, pattern)
+
+    inter = core.std.Interleave([ivtced, pprocess])
+    final = IVTCycles.cycle_08.decimate(inter, pattern)
+
+    final = join(ivtced, final) if chroma_only else final
+
+    return FieldBased.ensure_presence(final, FieldBased.PROGRESSIVE)
 
 
 main_file = os.path.realpath(sys.argv[0]) if sys.argv[0] else None
