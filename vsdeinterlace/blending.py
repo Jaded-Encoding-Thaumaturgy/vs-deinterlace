@@ -1,58 +1,136 @@
 from __future__ import annotations
 
-import warnings
-from functools import partial
+from typing import Any, cast
 
-from vsexprtools import expr_func
-from vsrgtools import repair
-from vstools import core, vs
+from vsexprtools import complexpr_available, expr_func, norm_expr
+from vstools import VSFunction, join, shift_clip, shift_clip_multi, vs
+
+from .combing import vinverse
+from .utils import interlace_patterns
 
 __all__ = [
-    'deblend'
+    'deblending_helper',
+
+    'deblend', 'deblend_bob',
+
+    'deblend_fix_kf'
 ]
 
 
-def deblend(clip: vs.VideoNode, start: int = 0, rep: int | None = None, decimate: bool = True) -> vs.VideoNode:
+def deblending_helper(fieldmatched: vs.VideoNode, deblended: vs.VideoNode, length: int = 5) -> vs.VideoNode:
     """
-    Deblending function for blended AABBA patterns.
+    Helper function to select a deblended clip pattern from a fieldmatched clip.
 
-    .. warning:
-        This function's base functionality and settings will be updated in a future version!
+    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
+    :param deblended:       Deblended clip.
+    :param length:          Length of the pattern.
 
-    Assuming there's a constant pattern of frames (labeled A, B, C, CD, and DA in this function),
-    blending can be fixed by calculating the D frame by getting halves of CD and DA, and using that
-    to fix up CD. DA is then dropped because it's a duplicated frame.
-
-    Doing this will result in some of the artifacting being added to the deblended frame,
-    but we can mitigate that by repairing the frame with the non-blended frame before it.
-
-    For more information, please refer to `this blogpost by torchlight
-    <https://mechaweaponsvidya.wordpress.com/2012/09/13/adventures-in-deblending/>`_.
-
-    :param clip:        Clip to process.
-    :param start:       First frame of the pattern (Default: 0).
-    :param rep:         Repair mode for the deblended frames, no repair if None (Default: None).
-    :param decimate:    Decimate the video after deblending (Default: True).
-
-    :return:            Deblended clip.
+    :return: Deblended clip.
     """
-    warnings.warn("deblend: 'This function's base functionality and settings "
-                  "will be updated in a future version!'", DeprecationWarning)
+    inters = interlace_patterns(fieldmatched, deblended, length)
+    inters += [shift_clip(inter, 1) for inter in inters]
 
-    blends_a = range(start + 2, clip.num_frames - 1, 5)
-    blends_b = range(start + 3, clip.num_frames - 1, 5)
-    expr_cd = ["z a 2 / - y x 2 / - +"]
+    inters.insert(0, fieldmatched)
 
-    # Thanks Myaa, motbob and kageru!
-    def deblend(n: int, clip: vs.VideoNode, rep: int | None) -> vs.VideoNode:
-        if n % 5 in [0, 1, 4]:
-            return clip
-        else:
-            if n in blends_a:
-                c, cd, da, a = clip[n - 1], clip[n], clip[n + 1], clip[n + 2]
-                debl = expr_func([c, cd, da, a], expr_cd)
-                return repair(debl, c, rep) if rep else debl
-            return clip
+    prop_srcs = shift_clip_multi(fieldmatched, (0, 1))
 
-    debl = core.std.FrameEval(clip, partial(deblend, clip=clip, rep=rep))
-    return core.std.DeleteFrames(debl, blends_b).std.AssumeFPS(fpsnum=24000, fpsden=1001) if decimate else debl
+    if complexpr_available:
+        index_src = expr_func(
+            prop_srcs, f'x._Combed N {length} % 1 + y._Combed {length} 0 ? + 0 ?', vs.GRAY8
+        )
+
+        return fieldmatched.std.FrameEval(lambda n, f: inters[f[0][0, 0]], index_src)  # type: ignore
+
+    def _deblend_eval(n: int, f: list[vs.VideoFrame]) -> vs.VideoNode:
+        idx = 0
+
+        if f[0].props._Combed == 1:
+            idx += (n % length) + 1
+
+            if f[1].props._Combed == 1:
+                idx += length
+
+        return inters[idx]
+
+    return fieldmatched.std.FrameEval(_deblend_eval, prop_srcs)
+
+
+def deblend(
+    fieldmatched: vs.VideoNode, src: vs.VideoNode, decomber: VSFunction | None = vinverse, **kwargs: Any
+) -> vs.VideoNode:
+    """
+    Automatically deblends if normal field matching leaves 2 blends every 5 frames. Adopted from jvsfunc.
+
+    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
+    :param src:             Input source to fieldmatching.
+    :param decomber:        Optional post processing decomber after deblending and before pattern matching.
+
+    :return: Deblended clip.
+    """
+
+    deblended = norm_expr(shift_clip_multi(src, (-1, 2)), 'z a 2 / - y x 2 / - +')
+
+    if decomber:
+        deblended = decomber(deblended, **kwargs)
+
+    deblended = deblending_helper(fieldmatched, deblended)
+
+    return join(fieldmatched, deblended)
+
+
+def deblend_bob(fieldmatched: vs.VideoNode, bobbed: vs.VideoNode | tuple[vs.VideoNode, vs.VideoNode]) -> vs.VideoNode:
+    """
+    Stronger version of `deblend` that uses a bobbed clip to deblend. Adopted from jvsfunc.
+
+    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
+    :param bobbed:          Bobbed source or a tuple of even/odd fields.
+
+    :return: Deblended clip.
+    """
+
+    if isinstance(bobbed, tuple):
+        bob0, bob1 = bobbed
+    else:
+        bob0, bob1 = bobbed.std.SelectEvery(2, 0), bobbed.std.SelectEvery(2, 1)
+
+    ab0, bc0, c0 = shift_clip_multi(bob0, (0, 1, 2))
+    bc1, ab1, a1 = shift_clip_multi(bob1)
+
+    deblended = norm_expr([a1, ab1, ab0, bc1, bc0, c0], ('b', 'y x - z + b c - a + + 2 /'))
+
+    return deblending_helper(fieldmatched, deblended)
+
+
+def deblend_fix_kf(fieldmatched: vs.VideoNode, deblended: vs.VideoNode) -> vs.VideoNode:
+    """
+    Should be used after deblend/_bob to fix scene changes. Adopted from jvsfunc.
+
+    :param fieldmatched:    Fieldmatched clip used to debled, must have field=3 and possibly low cthresh.
+    :param deblended:       Deblended clip.
+
+    :return: Deblended clip with fixed blended keyframes.
+    """
+
+    shifted_clips = shift_clip_multi(deblended)
+    prop_srcs = shift_clip_multi(fieldmatched, (0, 1))
+
+    if complexpr_available:
+        index_src = expr_func(
+            prop_srcs, 'x._Combed x.VFMSceneChange and y.VFMSceneChange 2 0 ? 1 ?', vs.GRAY8
+        )
+
+        return deblended.std.FrameEval(lambda n, f: shifted_clips[f[0][0, 0]], index_src)  # type: ignore
+
+    def _keyframe_fix(n: int, f: list[vs.VideoFrame]) -> vs.VideoNode:
+        keyfm = cast(tuple[int, int], (f[0].props.VFMSceneChange, f[1].props.VFMSceneChange))
+
+        idx = 1
+        if f[0].props._Combed == 1:
+            if keyfm == (1, 0):
+                idx = 0
+            elif keyfm == (1, 1):
+                idx = 2
+
+        return shifted_clips[idx]
+
+    return deblended.std.FrameEval(_keyframe_fix, prop_srcs)

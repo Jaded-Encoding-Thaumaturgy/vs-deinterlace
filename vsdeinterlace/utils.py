@@ -14,12 +14,25 @@ from vstools import (
 from .helpers import check_ivtc_pattern
 
 __all__ = [
+    'interlace_patterns',
+
     'seek_cycle',
 
     'check_patterns',
 
     'PARser'
 ]
+
+
+def interlace_patterns(clipa: vs.VideoNode, clipb: vs.VideoNode, length: int = 5) -> list[vs.VideoNode]:
+    a_select = [clipa.std.SelectEvery(length, i) for i in range(length)]
+    b_select = [clipb.std.SelectEvery(length, i) for i in range(length)]
+
+    return [
+        core.std.Interleave([
+            (b_select if i == j else a_select)[j] for j in range(length)
+        ]) for i in range(length)
+    ]
 
 
 def seek_cycle(clip: vs.VideoNode, write_props: bool = True, scale: int = -1) -> vs.VideoNode:
