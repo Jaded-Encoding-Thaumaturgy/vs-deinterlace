@@ -17,12 +17,12 @@ __all__ = [
 ]
 
 
-def deblending_helper(fieldmatched: vs.VideoNode, deblended: vs.VideoNode, length: int = 5) -> vs.VideoNode:
+def deblending_helper(deblended: vs.VideoNode, fieldmatched: vs.VideoNode, length: int = 5) -> vs.VideoNode:
     """
     Helper function to select a deblended clip pattern from a fieldmatched clip.
 
-    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
     :param deblended:       Deblended clip.
+    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
     :param length:          Length of the pattern.
 
     :return: Deblended clip.
@@ -56,13 +56,13 @@ def deblending_helper(fieldmatched: vs.VideoNode, deblended: vs.VideoNode, lengt
 
 
 def deblend(
-    fieldmatched: vs.VideoNode, src: vs.VideoNode, decomber: VSFunction | None = vinverse, **kwargs: Any
+    src: vs.VideoNode, fieldmatched: vs.VideoNode | None = None, decomber: VSFunction | None = vinverse, **kwargs: Any
 ) -> vs.VideoNode:
     """
     Automatically deblends if normal field matching leaves 2 blends every 5 frames. Adopted from jvsfunc.
 
-    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
     :param src:             Input source to fieldmatching.
+    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
     :param decomber:        Optional post processing decomber after deblending and before pattern matching.
 
     :return: Deblended clip.
@@ -73,17 +73,21 @@ def deblend(
     if decomber:
         deblended = decomber(deblended, **kwargs)
 
-    deblended = deblending_helper(fieldmatched, deblended)
+    if fieldmatched:
+        deblended = deblending_helper(fieldmatched, deblended)
 
-    return join(fieldmatched, deblended)
+    return join(fieldmatched or src, deblended)
 
 
-def deblend_bob(fieldmatched: vs.VideoNode, bobbed: vs.VideoNode | tuple[vs.VideoNode, vs.VideoNode]) -> vs.VideoNode:
+def deblend_bob(
+    bobbed: vs.VideoNode | tuple[vs.VideoNode, vs.VideoNode],
+    fieldmatched: vs.VideoNode | None = None, blend_out: bool = False
+) -> vs.VideoNode:
     """
     Stronger version of `deblend` that uses a bobbed clip to deblend. Adopted from jvsfunc.
 
-    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
     :param bobbed:          Bobbed source or a tuple of even/odd fields.
+    :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
 
     :return: Deblended clip.
     """
@@ -98,15 +102,18 @@ def deblend_bob(fieldmatched: vs.VideoNode, bobbed: vs.VideoNode | tuple[vs.Vide
 
     deblended = norm_expr([a1, ab1, ab0, bc1, bc0, c0], ('b', 'y x - z + b c - a + + 2 /'))
 
-    return deblending_helper(fieldmatched, deblended)
+    if fieldmatched:
+        return deblending_helper(fieldmatched, deblended)
+
+    return deblended
 
 
-def deblend_fix_kf(fieldmatched: vs.VideoNode, deblended: vs.VideoNode) -> vs.VideoNode:
+def deblend_fix_kf(deblended: vs.VideoNode, fieldmatched: vs.VideoNode) -> vs.VideoNode:
     """
     Should be used after deblend/_bob to fix scene changes. Adopted from jvsfunc.
 
-    :param fieldmatched:    Fieldmatched clip used to debled, must have field=3 and possibly low cthresh.
     :param deblended:       Deblended clip.
+    :param fieldmatched:    Fieldmatched clip used to debled, must have field=3 and possibly low cthresh.
 
     :return: Deblended clip with fixed blended keyframes.
     """
