@@ -14,8 +14,6 @@ from vstools import (
 from .helpers import check_ivtc_pattern
 
 __all__ = [
-    'decimate',
-
     'interlace_patterns',
 
     'seek_cycle',
@@ -24,21 +22,6 @@ __all__ = [
 
     'PARser'
 ]
-
-
-def decimate(src: vs.VideoNode, pattern: int, length: int = 5) -> vs.VideoNode:
-    """
-    Decimate with static pattern.
-
-    :param src:     Input clip.
-    :param pattern: Decimate pattern.
-    :param length:  Length of the decimation pattern.
-
-    :return: Decimated clip.
-    """
-    assert 0 <= pattern < length
-
-    return src.std.SelectEvery(length, [i for i in range(length) if i != pattern])
 
 
 def interlace_patterns(clipa: vs.VideoNode, clipb: vs.VideoNode, length: int = 5) -> list[vs.VideoNode]:

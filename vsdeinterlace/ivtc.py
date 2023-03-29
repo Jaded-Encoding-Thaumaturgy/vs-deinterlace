@@ -6,12 +6,33 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from vstools import CustomTypeError, FieldBased, FieldBasedT, clip_async_render, vs
+from vstools import (
+    CustomEnum, CustomTypeError, FieldBased, FieldBasedT, VSFunctionKwArgs, clip_async_render, core, join, vs
+)
 
 __all__ = [
     'sivtc',
+    'IVTCycles',
     'tivtc_2pass', 'tivtc_vfr'
 ]
+
+
+class IVTCycles(list[int], CustomEnum):
+    cycle_10 = [[0, 3, 6, 8], [0, 2, 5, 8], [0, 2, 4, 7], [2, 4, 6, 9], [1, 4, 6, 8]]
+    cycle_08 = [[0, 3, 4, 6], [0, 2, 5, 6], [0, 2, 4, 7], [0, 2, 4, 7], [1, 2, 4, 6]]
+    cycle_05 = [[0, 1, 3, 4], [0, 1, 2, 4], [0, 1, 2, 3], [1, 2, 3, 4], [0, 2, 3, 4]]
+
+    @property
+    def pattern_length(self) -> int:
+        return int(self._name_[6:])
+
+    @property
+    def length(self) -> int:
+        return len(self.value)
+
+    def decimate(self, clip: vs.VideoNode, pattern: int = 0) -> vs.VideoNode:
+        assert 0 <= pattern < self.length
+        return clip.std.SelectEvery(self.pattern_length, self.value[pattern])
 
 
 def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True) -> vs.VideoNode:
@@ -28,15 +49,13 @@ def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True) 
     :return:            IVTC'd clip.
     """
 
-    selectlist = [[0, 3, 6, 8], [0, 2, 5, 8], [0, 2, 4, 7], [2, 4, 6, 9], [1, 4, 6, 8]]
+    tff = FieldBased.from_param(tff).field
 
-    patterns = selectlist[pattern % len(selectlist)]
+    ivtc = clip.std.SeparateFields(tff=tff).std.DoubleWeave()
+    ivtc = IVTCycles.cycle_10.decimate(ivtc, pattern)
 
-    defivtc = clip.std.SeparateFields(tff=FieldBased(tff).field).std.DoubleWeave()
+    return FieldBased.PROGRESSIVE.apply(ivtc)
 
-    return FieldBased.ensure_presence(
-        defivtc.std.SelectEvery(10, patterns), FieldBased.PROGRESSIVE
-    )
 
 
 main_file = os.path.realpath(sys.argv[0]) if sys.argv[0] else None
