@@ -11,8 +11,6 @@ from vstools import (
     mod2, mod4, vs
 )
 
-from .helpers import check_ivtc_pattern
-
 __all__ = [
     'interlace_patterns',
 ]
