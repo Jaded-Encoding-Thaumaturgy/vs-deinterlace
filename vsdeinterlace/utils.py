@@ -1,15 +1,6 @@
 from __future__ import annotations
 
-from fractions import Fraction
-from functools import partial
-from math import gcd
-from typing import SupportsFloat
-
-from vskernels import BicubicDidee, Catrom
-from vstools import (
-    CustomError, CustomValueError, Dar, FieldBased, FieldBasedT, FuncExceptT, Region, core, depth, get_prop, get_w,
-    mod2, mod4, vs
-)
+from vstools import core, vs
 
 __all__ = [
     'interlace_patterns',
