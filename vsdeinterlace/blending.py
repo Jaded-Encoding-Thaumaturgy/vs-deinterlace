@@ -6,7 +6,7 @@ from vsexprtools import complexpr_available, expr_func, norm_expr
 from vstools import VSFunction, join, shift_clip, shift_clip_multi, vs
 
 from .combing import vinverse
-from .utils import interlace_patterns
+from .utils import telecine_patterns
 
 __all__ = [
     'deblending_helper',
@@ -27,7 +27,7 @@ def deblending_helper(deblended: vs.VideoNode, fieldmatched: vs.VideoNode, lengt
 
     :return: Deblended clip.
     """
-    inters = interlace_patterns(fieldmatched, deblended, length)
+    inters = telecine_patterns(fieldmatched, deblended, length)
     inters += [shift_clip(inter, 1) for inter in inters]
 
     inters.insert(0, fieldmatched)
