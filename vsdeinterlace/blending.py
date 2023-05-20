@@ -97,7 +97,7 @@ def deblend_bob(
     else:
         bob0, bob1 = bobbed.std.SelectEvery(2, 0), bobbed.std.SelectEvery(2, 1)
 
-    ab0, bc0, c0 = shift_clip_multi(bob0, (0, 1, 2))
+    ab0, bc0, c0 = shift_clip_multi(bob0, (0, 2))
     bc1, ab1, a1 = shift_clip_multi(bob1)
 
     deblended = norm_expr([a1, ab1, ab0, bc1, bc0, c0], ('b', 'y x - z + b c - a + + 2 /'))
