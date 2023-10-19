@@ -30,7 +30,9 @@ class IVTCycles(list[int], CustomEnum):
         return clip.std.SelectEvery(self.pattern_length, self.value[pattern])
 
 
-def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True) -> vs.VideoNode:
+def sivtc(
+    clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True, ivtc_cycle: IVTCycles = IVTCycles.cycle_10
+) -> vs.VideoNode:
     """
     Simplest form of a fieldmatching function.
 
@@ -47,14 +49,16 @@ def sivtc(clip: vs.VideoNode, pattern: int = 0, tff: bool | FieldBasedT = True) 
     tff = FieldBased.from_param(tff).field
 
     ivtc = clip.std.SeparateFields(tff=tff).std.DoubleWeave()
-    ivtc = IVTCycles.cycle_10.decimate(ivtc, pattern)
+    ivtc = ivtc_cycle.decimate(ivtc, pattern)
 
     return FieldBased.PROGRESSIVE.apply(ivtc)
 
 
 def jivtc(
     src: vs.VideoNode, pattern: int, tff: bool = True, chroma_only: bool = True,
-    postprocess: VSFunctionKwArgs = deblend, postdecimate: bool = True, **kwargs: Any  # type: ignore
+    postprocess: VSFunctionKwArgs = deblend, postdecimate: IVTCycles | None = IVTCycles.cycle_05,
+    ivtc_cycle: IVTCycles = IVTCycles.cycle_10, final_ivtc_cycle: IVTCycles = IVTCycles.cycle_08,
+    **kwargs: Any
 ) -> vs.VideoNode:
     """
     This function should only be used when a normal ivtc or ivtc + bobber leaves chroma blend to a every fourth frame.
@@ -73,15 +77,15 @@ def jivtc(
     InvalidFramerateError.check(jivtc, src, (30000, 1001))
 
     ivtced = core.std.SeparateFields(src, tff=tff).std.DoubleWeave()
-    ivtced = IVTCycles.cycle_10.decimate(ivtced, pattern)
+    ivtced = ivtc_cycle.decimate(ivtced, pattern)
 
     pprocess = postprocess(src if postdecimate else ivtced, **kwargs)
 
     if postdecimate:
-        pprocess = IVTCycles.cycle_05.decimate(pprocess, pattern)
+        pprocess = postdecimate.decimate(pprocess, pattern)
 
     inter = core.std.Interleave([ivtced, pprocess])
-    final = IVTCycles.cycle_08.decimate(inter, pattern)
+    final = final_ivtc_cycle.decimate(inter, pattern)
 
     final = join(ivtced, final) if chroma_only else final
 
