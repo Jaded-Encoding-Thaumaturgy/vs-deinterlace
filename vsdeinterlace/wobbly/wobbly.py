@@ -34,7 +34,7 @@ class WobblyParsed:
     trims: list[tuple[int, int]]
     """The trims applied to the clip"""
 
-    matches: str
+    matches: list[str]
     """The field matches."""
 
     combs: list[int]
@@ -88,7 +88,11 @@ class WobblyParsed:
             # Can this be done more efficiently?
             clip = core.std.Splice([clip.std.Trim(s, e) for s, e in self.trims])
 
-        clip = clip.fh.FieldHint(None, self.field_order - 1, self.matches)
+        if deint_orphans:
+            for f in self.orphans:
+                self.matches[f] = 'c'  # type:ignore[call-overload]
+
+        clip = clip.fh.FieldHint(None, self.field_order - 1, "".join(self.matches))
 
         if self.freezes:
             clip = clip.std.FreezeFrames(*zip(*self.freezes))
@@ -161,11 +165,11 @@ class WobblyParsed:
 
         return replace_ranges(clip, ftf, [f for f, _ in self.interlaced_fades])
 
-    def _deint_orphans(self, clip: vs.VideoNode, ref: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
-        """Deinterlace orphan frames. `ref` must be the pre-fieldmatched clip."""
+    def _deint_orphans(self, clip: vs.VideoNode, **kwargs: Any) -> vs.VideoNode:
+        """Deinterlace orphan frames."""
         from havsfunc import QTGMC  # type:ignore[import]
 
-        ref = ref.std.CopyFrameProps(clip)
+        clip = clip.std.SetFrameProps(wobbly_deint=False)
 
         # TODO: test these settings a bit better.
         qtgmc_args: dict[str, Any] = dict(
@@ -176,10 +180,10 @@ class WobblyParsed:
         ) | kwargs | dict(FPSDivisor=1, TFF=self.field_order.is_tff)
 
         # TODO: test this further
-        ref = ref.std.SetFrameProps(wobbly_deint=True)
+        deint = clip.std.SetFrameProps(wobbly_deint=True)
 
-        deint_n = QTGMC(ref[1:] + ref[-1], **qtgmc_args)[self.field_order.field::2]
-        deint_b = QTGMC(ref, **qtgmc_args)[self.field_order.field::2]
+        deint_n = QTGMC(deint[1:] + deint[-1], **qtgmc_args)[self.field_order.field::2]
+        deint_b = QTGMC(deint, **qtgmc_args)[self.field_order.field::2]
 
         out = replace_ranges(clip, deint_n, [f for f, m in self.orphans if m == "n"])
         out = replace_ranges(out, deint_b, [f for f, m in self.orphans if m == "b"])
@@ -214,12 +218,12 @@ def parse_wobbly(
     framerate = Fraction(*data.get("input frame rate", [30000, 1001]))
     cycle = dict(data.get("vdecimate parameters", {})).get("cycle", 5)
     order = dict(data.get("vfm parameters", {})).get("order", -1)
-    matches = "".join(data.get("matches", []))
+    matches = data.get("matches", [])
     combs = data.get("combed frames", [])
     decimations = data.get("decimated frames", [])
     sections = data.get("sections", [])
     fades = data.get("interlaced fades", [])
-    # TODO: See if we can somehow hack in 60p support. Probably have users set a prop with `presets`?
+    # TODO: See if we can somehow hack in 60p support. Probably have users set a prop with `presets`? Maybe in `Wibbly`?
     # presets = data.get("presets", [])
     # custom = data.get("custom lists", [])
 
