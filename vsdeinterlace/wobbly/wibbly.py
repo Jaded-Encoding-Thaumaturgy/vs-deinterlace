@@ -11,7 +11,8 @@ from vstools import (CustomValueError, FunctionUtil, Keyframes,
 from .types import Types
 
 __all__ = [
-    "WibblyConfig", "Wibbly"
+    "Config", "WibblyConfig",
+    "Wibbly"
 ]
 
 
@@ -71,6 +72,8 @@ class FrameMetric(NamedTuple):
 
 @dataclass
 class Wibbly:
+    """A class representing the Wibbly metrics-gathering process."""
+
     clip: vs.VideoNode
     config: WibblyConfig = field(default_factory=lambda: WibblyConfig())
     trims: list[tuple[int | None, int | None]] | None = None
@@ -153,6 +156,8 @@ class Wibbly:
         return self._get_clip(False)
 
     def calculate_metrics(self) -> list[FrameMetric]:
+        """Calculate the Wobbly metrics for the given clip with the given configuration."""
+
         match_chars = list[Types.Match](['p', 'c', 'n', 'b', 'u'])
 
         def _to_midx(match: int) -> Types.Match:
@@ -187,13 +192,22 @@ class Wibbly:
         return self.metrics
 
     def to_file(
-        self,
-        video_path: SPathLike | None = None,
-        out_path: SPathLike | None = None,
+        self, video_path: SPathLike | None = None, out_path: SPathLike | None = None,
         metrics: list[FrameMetric] | None = None
     ) -> SPath:
         """
-        Write a wob file to be used in Wobbly.
+        Write a file to be used in Wobbly for further processing.
+
+        :param video_path:      The path to the video file. This must be present for wobbly to load the video.
+                                If your source was indexed using `vssource.source`,it will automatically
+                                grab the path from the frameprops.
+                                If no path can be found, an error is raised.
+        :param out_path:        Output location for the Wobbly file. If None, automatically outputs to
+                                the `video_path` with the suffix set to ".wob".
+        :param metrics:         A list of FrameMetric objects. Does not need to be passed if you used
+                                `calculate_metrics`. If no metrics can be found, an error is raised.
+
+        :return:                Path to the output Wobbly file.
         """
         from .._metadata import __version__
 
@@ -256,11 +270,13 @@ class Wibbly:
         vfm_out: dict[str, Any] = {}
         vdec_out: dict[str, Any] = {}
 
-        for k, v in self.config.vfm._asdict().items():
-            vfm_out |= {k: float(v) if isinstance(v, bool) else v}
+        if self.config.vfm is not None:
+            for k, v in self.config.vfm._asdict().items():
+                vfm_out |= {k: float(v) if isinstance(v, bool) else v}
 
-        for k, v in self.config.vdec._asdict().items():
-            vdec_out |= {k: float(v) if isinstance(v, bool) else v}
+        if self.config.vdec is not None:
+            for k, v in self.config.vdec._asdict().items():
+                vdec_out |= {k: float(v) if isinstance(v, bool) else v}
 
         out_dict = {
             "wobbly version": 6,
@@ -269,7 +285,7 @@ class Wibbly:
             "input file": video_path.as_posix(),
             "input frame rate": [self.clip.fps.numerator, self.clip.fps.denominator],
             "input resolution": [width, height],
-            "trim": [] if not self.trims else [[s, e] for s, e in self.trims],  # type:ignore[misc]
+            "trim": [] if not self.trims else [[s, e] for s, e in self.trims],
             "vfm parameters": vfm_out,
             "vdecimate parameters": vdec_out,
             "mics": mics,
