@@ -1,364 +1,295 @@
-import inspect
+from __future__ import annotations
+
 import json
-from typing import Any, Literal, cast
+from dataclasses import dataclass, field
+from typing import Any, NamedTuple
 
-from vskernels import Catrom
-from vssource import source
-from vstools import (CustomKeyError, CustomNotImplementedError, CustomValueError, DependencyNotFoundError, FieldBased,
-                     FieldBasedT, FrameRangesN, FuncExceptT, FunctionUtil, SceneChangeMode, SPath, SPathLike,
-                     UnsupportedFieldBasedError, clip_async_render, core, depth, get_prop, get_y, inject_self,
-                     merge_clip_props, mod4, vs)
+from vstools import (CustomValueError, FunctionUtil, Keyframes,
+                     SceneChangeMode, SPath, SPathLike, clip_async_render,
+                     core, get_prop, get_y, normalize_ranges, vs)
 
-from ..combing import fix_telecined_fades
+from .types import Types
+
+__all__ = [
+    "WibblyConfig", "Wibbly"
+]
 
 
+class Config:
+    class Crop(NamedTuple):
+        left: int = 0
+        top: int = 0
+        right: int = 0
+        bottom: int = 0
+        early: bool = True
+
+    class DMetrics(NamedTuple):
+        nt: int = 10
+
+    class VMFParams(NamedTuple):
+        order: int = 1
+        cthresh: int = 9
+        mi: int = 80
+        blockx: int = 16
+        blocky: int = 16
+        y0: int = 16
+        y1: int = 16
+        micmatch: bool = True
+        scthresh: float = 12.0
+        mchroma: bool = True
+        chroma: bool = True
+
+    class VDECParams(NamedTuple):
+        blockx: int = 32
+        blocky: int = 32
+        dupthresh: float = 1.1
+        scthresh: float = 15.0
+        chroma: bool = True
+
+
+@dataclass
+class WibblyConfig(Config):
+    crop: Config.Crop | None = Config.Crop()
+    dmetrics: Config.DMetrics | None = Config.DMetrics()
+    vfm: Config.VMFParams | None = Config.VMFParams()
+    vdec: Config.VDECParams | None = Config.VDECParams()
+    fade_thr: float | None = 0.4 / 255
+    sc_mode: SceneChangeMode | None = SceneChangeMode.WWXD
+
+
+class FrameMetric(NamedTuple):
+    is_combed: bool
+    is_keyframe: bool
+    match: Types.Match | None
+    vfm_mics: list[int] | None
+    mm_dmet: list[int] | None
+    vm_dmet: list[int] | None
+    dec_met: int | None
+    dec_drop: bool
+    field_diff: float | None
+
+
+@dataclass
 class Wibbly:
-    """A class representing the Wibbly metric collection process."""
+    clip: vs.VideoNode
+    config: WibblyConfig = field(default_factory=lambda: WibblyConfig())
+    trims: list[tuple[int | None, int | None]] | None = None
+    metrics: list[FrameMetric] = field(default_factory=list[FrameMetric])
 
-    pref_clip: vs.VideoNode
-    """Prefiltered clip."""
+    def _get_clip(self, display: bool = False) -> vs.VideoNode:
+        src, out_props = self.clip, list[str]()
 
-    out_file: SPath
-    """The location of the processed wob file."""
+        func = FunctionUtil(src, Wibbly, None, (vs.YUV, vs.GRAY), 8)
 
-    def __init__(self, clip: vs.VideoNode, out_path: SPathLike | None = None) -> None:
-        # TODO: figure out what I wanna put in here
-        if out_path is None:
-            out_path = self._get_out_spath()
+        wclip = func.work_clip
 
-        self.pref_clip = depth(clip, 8)
-        self.out_file = SPath(out_path)
+        if not display:
+            norm_trims = normalize_ranges(func.work_clip, self.trims)
 
-    @inject_self
-    def process(
+            if len(norm_trims) == 1:
+                if (trim := norm_trims.pop()) != (0, wclip.num_frames - 1):
+                    wclip = wclip[trim[0]:trim[1] + 1]
+            else:
+                wclip = core.std.Splice([
+                    wclip[start:end + 1] for start, end in norm_trims
+                ])
+
+        if (crop := self.config.crop) is not None:
+            wclip = wclip.std.CropRel(crop.left, crop.right, crop.top, crop.bottom)
+
+        if (vfm := self.config.vfm) is not None:
+            if (dmet := self.config.dmetrics):
+                wclip = wclip.dmetrics.DMetrics(vfm.order, vfm.chroma, dmet.nt, vfm.y0, vfm.y1)
+                out_props.extend(['MMetrics', 'VMetrics'])
+
+            wclip = wclip.vivtc.VFM(
+                vfm.order, int(not vfm.order), 0, vfm.mchroma, vfm.cthresh, vfm.mi, vfm.chroma,
+                vfm.blockx, vfm.blocky, vfm.y0, vfm.y1, vfm.scthresh, vfm.micmatch, True, None
+            )
+            out_props.extend(['VFMMatch', 'VFMMics', 'VFMSceneChange', '_Combed'])
+
+        if self.config.fade_thr is not None:
+            separated = get_y(wclip).std.SeparateFields(True)
+
+            even_avg = separated[::2].std.PlaneStats()
+            odd_avg = separated[1::2].std.PlaneStats()
+
+            if hasattr(core, 'akarin'):
+                wclip = core.akarin.PropExpr(
+                    [wclip, even_avg, odd_avg],
+                    lambda: {'WibblyFieldDiff': 'y.PlaneStatsAverage z.PlaneStatsAverage - abs'}
+                )
+            else:
+                def _selector(n: int, f: list[vs.VideoFrame]) -> vs.VideoFrame:
+                    f_out = f[0].copy()
+                    f_out.props.WibblyFieldDiff = abs(f[1].props.PlaneStatsAverage - f[2].props.PlaneStatsAverage)
+                    return f_out
+
+                wclip = core.std.ModifyFrame(wclip.std.BlankClip(), [wclip, even_avg, odd_avg], _selector)
+
+            out_props.extend(['WibblyFieldDiff'])
+
+        if (vdec := self.config.vdec) is not None:
+            wclip = wclip.vivtc.VDecimate(
+                5, vdec.chroma, vdec.dupthresh, vdec.scthresh,
+                vdec.blockx, vdec.blocky, None, None, True
+            )
+            out_props.extend(['VDecimateDrop', 'VDecimateTotalDiff', 'VDecimateMaxBlockDiff'])
+
+        if not display and self.config.sc_mode is not None:
+            wclip = Keyframes.to_clip(wclip, mode=self.config.sc_mode, prop_key='WobblySceneChange')
+
+        if display and out_props:
+            wclip = wclip.text.FrameProps(out_props)
+
+        return func.return_clip(wclip)
+
+    @property
+    def display_clip(self) -> vs.VideoNode:
+        return self._get_clip(True)
+
+    @property
+    def output_clip(self) -> vs.VideoNode:
+        return self._get_clip(False)
+
+    def calculate_metrics(self) -> list[FrameMetric]:
+        match_chars = list[Types.Match](['p', 'c', 'n', 'b', 'u'])
+
+        def _to_midx(match: int) -> Types.Match:
+            return match_chars[match]
+
+        def _callback(n: int, f: vs.VideoFrame) -> FrameMetric:
+            props = f.props
+
+            match = get_prop(props, 'VFMMatch', int, _to_midx, None)
+
+            is_combed = get_prop(props, '_Combed', int, bool, False)
+
+            vfm_mics = get_prop(props, 'VFMMics', list, None, None)
+
+            mm_dmet = get_prop(props, 'MMetrics', list, None, None)
+            vm_dmet = get_prop(props, 'VMetrics', list, None, None)
+
+            is_keyframe = get_prop(props, 'WobblySceneChange', int, bool, False)
+
+            dec_met = get_prop(props, 'VDecimateMaxBlockDiff', int, None, None)
+
+            dec_drop = get_prop(props, 'VDecimateDrop', int, bool, False)
+
+            field_diff = get_prop(props, 'WibblyFieldDiff', float, None, 0)
+
+            return FrameMetric(
+                is_combed, is_keyframe, match, vfm_mics, mm_dmet, vm_dmet, dec_met, dec_drop, field_diff
+            )
+
+        self.metrics = clip_async_render(self.output_clip, None, 'Analyzing clip...', _callback)
+
+        return self.metrics
+
+    def to_file(
         self,
-        clip: vs.VideoNode | SPathLike | None = None,
+        video_path: SPathLike | None = None,
         out_path: SPathLike | None = None,
-        trims: FrameRangesN = [],
-        tff: bool | FieldBasedT | None = None,
-        chroma: bool = True,
-        fades_thr: float | Literal[False] = 0.4 / 255,
-        colors: float | list[float] = 0,
-        field_match: bool = True,
-        decimate: bool = True,
-        scenechanges: bool = True,
-        scenechange_mode: SceneChangeMode = SceneChangeMode.WWXD,
-        dmetrics: bool = True,
-        dmetrics_nt: int = 10,
-        func: FuncExceptT | None = None,
-        **kwargs: Any
+        metrics: list[FrameMetric] | None = None
     ) -> SPath:
         """
-        Initiate the metric gathering process and output it to a file.
-
-        The output file is intended to be used in conjunction
-        with `Wobbly <https://github.com/Setsugennoao/Wobbly/tree/master>`_,
-        where you can apply further IVTC refining.
-
-        DO NOT trim your clip before passing it here! That will throw Wobbly off!
-
-        Unlike Wibbly, this does not handle pre-cropping. This is the user's responsibility.
-        When applying prefiltering, be mindful not to filter in a way that makes it difficult to gather metrics.
-        This means non-field-aware filtering must be kept to a minimum!
-
-        :param clip:                Clip to gather metrics from.
-        :param out_path:            Path to write the Wobbly metrics file to.
-        :param trims:               Trims for the clip. This MUST be done through this class!
-        :param tff:                 Top-field-first. `False` sets it to Bottom-Field-First.
-                                    If `None`, get the field order from the _FieldBased prop.
-        :param chroma:              Whether to take chroma into account during processing as well.
-                                    This will be slower than running it on just the luma!
-        :param fade_thr:            Threshold for when a fade is considered to be an interlaced fade.
-                                    If set to `False`, do not check for this value.
-        :param colors:              Color offset for the plane average for fix_telecined_fades.
-        :param field_match:         Enable fieldmatching metrics gathering.
-        :param decimate:            Enable decimation metrics gathering.
-        :param scenechanges:        Enable Scenechange metrics gathering.
-        :param scenechange_mode:    The scenechange mode to apply to the clip.
-        :param dmetrics:            Enable dmetrics metrics gathering.
-        :param dmetrics_nt:         The dmetrics `nt` parameter. @@@What does this do?@@@
-        :param kwargs:              Keyword arguments to pass on to VFM.
-
-        :return:                    Path to the output .wob file.
+        Write a wob file to be used in Wobbly.
         """
-        func = func or self.process
+        from .._metadata import __version__
 
-        if clip is None:
-            clip = self.pref_clip
+        if video_path is None:
+            try:
+                video_path = get_prop(self.clip, "idx_path", bytes).decode()
+            except:
+                raise CustomValueError("You must pass a path to the video file!", self.to_file)
+
+        video_path = SPath(video_path)
 
         if out_path is None:
-            out_path = self._get_out_spath()
+            out_path = video_path.with_suffix(".wob")
 
-        if not any((field_match, decimate, scenechanges, dmetrics)):
-            raise CustomValueError("You must enable at least one option!", func)
+        out_path = SPath(out_path)
 
-        if (out_file := SPath(out_path)).exists():
-            raise CustomValueError(f"The file \"{out_file.absolute()}\" already exists!", func)
+        metrics = metrics or self.metrics
 
-        if isinstance(clip, vs.VideoNode):
-            clip = cast(vs.VideoNode, clip)
+        if not metrics:
+            raise CustomValueError("You must generate metrics before you can write them to a file!", self.to_file)
 
-            try:
-                wclip = clip
-                clip = SPath(get_prop(clip, "idx_filepath", bytes).decode('utf-8'))
-            except KeyError:
-                raise CustomKeyError("You must pass a filepath to `clip` or index using `vssource!", func)
-        else:
-            clip = SPath(str(clip))
-            wclip = source(clip, 8)
+        mics = []
+        mmetrics = []
+        matches = []
+        combed = []
+        dec_drop = []
+        dec_metrics = []
+        scenechanges = []
+        i_fades = []
 
-        self._check_plugins_installed(field_match or decimate, dmetrics, scenechanges, scenechange_mode, func)
+        for i, metric in enumerate(metrics):
+            mics.append(metric.vfm_mics)
+            mmetrics.append(metric.mm_dmet)
+            matches.append(metric.match)
 
-        vfm_kwargs = dict(micmatch=0, mode=0, micout=True) | kwargs
+            if metric.is_combed:
+                combed.append(i)
 
-        if trims:
-            if not isinstance(trims, list):
-                trims = [trims]  # type:ignore[list-item]
+            if metric.dec_drop:
+                dec_drop.append(i)
 
-            trimmed_wclip = wclip.std.BlankClip(length=1)
+            dec_metrics.append(metric.dec_met)
 
-            for start, end in trims:
-                trimmed_wclip = trimmed_wclip + wclip[start:end + 1]  # TODO: iirc this can be made faster
+            if metric.is_keyframe:
+                scenechanges.append(i)
 
-            wclip = trimmed_wclip[1:]
+            if metric.field_diff >= self.config.fade_thr:
+                i_fades.append({"frame": i, "field difference": metric.field_diff})
 
-        f = FunctionUtil(wclip, func, None if chroma else 0, (vs.GRAY, vs.YUV), 8)
+        width = self.clip.width
+        height = self.clip.height
 
-        pclip = FieldBased.ensure_presence(f.work_clip, tff, func)
+        if self.config.crop:
+            width -= self.config.crop.left
+            width -= self.config.crop.right
 
-        if not (p_tff := FieldBased.from_video(pclip)).is_inter:
-            raise UnsupportedFieldBasedError("The given clip is progressive! Please set `tff`", func)
+            height -= self.config.crop.top
+            height -= self.config.crop.bottom
 
-        pclip, props = self._prepare_clip(
-            pclip, p_tff, fades_thr, colors,
-            field_match, decimate, scenechanges,
-            scenechange_mode, dmetrics, dmetrics_nt,
-            **vfm_kwargs
-        )
+        vfm_out: dict[str, Any] = {}
+        vdec_out: dict[str, Any] = {}
 
-        metrics = self._render_metrics(pclip, props, fades_thr, func)
+        for k, v in self.config.vfm._asdict().items():
+            vfm_out |= {k: float(v) if isinstance(v, bool) else v}
 
-        self._write_wob_file(wclip, clip.as_posix(), out_file, trims, metrics)
-        self.out_file = out_file
-
-        return self.out_file
-
-    def _get_out_spath(self) -> SPath:
-        return SPath(inspect.stack()[3].filename + ".wob")
-
-    def _prepare_clip(
-        self, clip: vs.VideoNode, tff: FieldBased,
-        fades_thr: float | Literal[False], colors: float | list[float],
-        field_match: bool, decimate: bool, scenechanges: bool, scenechange_mode: SceneChangeMode,
-        dmetrics: bool, dmetrics_nt: int,
-        **kwargs: Any
-    ) -> tuple[vs.VideoNode, list[str]]:
-        """Run metrics plugins over the work clip and return a list of props to iterate over later."""
-        assert clip.format
-
-        fmt = clip.format
-
-        props: list[str] = []
-
-        if field_match and dmetrics:
-            clip = Catrom.resample(clip, vs.YUV420P8)  # dmetrics requires a YUV420P8 clip
-            clip = clip.dmetrics.DMetrics(nt=dmetrics_nt, y0=kwargs.get("y0", 16), y1=kwargs.get("y1", 16))
-
-            if fmt.color_family is vs.GRAY:
-                clip = get_y(clip)
-
-            props += ["MMetrics", "VMetrics"]
-
-        if field_match:
-            clip = clip.vivtc.VFM(tff.is_tff, field=not tff.is_tff, **kwargs)
-            props += ["VFMMatch", "VFMMics", "VFMSceneChange", "_Combed"]
-
-        if fades_thr:
-            # wobbly currently only supports Y.
-            planes = 0
-
-            clip = fix_telecined_fades(clip, tff, colors, planes, func=self.process)
-            # props += list(f"FtfDiff{i}" for i in normalize_planes(clip))
-            props += ["FtfDiff0"]
-
-        if decimate:
-            clip = clip.vivtc.VDecimate(dryrun=True)
-            props += ["VDecimateDrop", "VDecimateMaxBlockDiff", "VDecimateTotalDiff"]
-
-        if scenechanges:
-            clip = scenechange_mode.prepare_clip(clip, max(mod4(clip.height // 4), 120), True)
-
-            if scenechange_mode.is_WWXD:
-                props += ["Scenechange"]
-            if scenechange_mode.is_SCXVID:
-                props += ["_SceneChangePrev"]
-
-        prop_clip = core.std.BlankClip(None, 1, 1, vs.GRAY8, clip.num_frames)
-        prop_clip = merge_clip_props(prop_clip, clip)
-
-        return prop_clip, props
-
-    def _check_plugins_installed(
-        self,
-        vfm: bool,
-        dmetrics: bool,
-        scenechanges: bool,
-        scenechange_mode: SceneChangeMode,
-        func: FuncExceptT | None = None
-    ) -> None:
-        """Check whether all the necessary plugins are installed."""
-        plugins = ["akarin"]
-
-        if vfm:
-            plugins += ["vivtc"]
-
-        if dmetrics:
-            plugins += ["dmetrics"]
-
-        if scenechanges and scenechange_mode.is_WWXD:
-            plugins += ["wwxd"]
-        if scenechanges and scenechange_mode.is_SCXVID:
-            plugins += ["scxvid"]
-
-        if func is None:
-            func = inspect.stack()[1].function
-
-        missing_plugins: list[str] = []
-
-        for plugin in plugins:
-            if not hasattr(vs.core, plugin):
-                missing_plugins += [plugin]
-
-        if not missing_plugins:
-            return
-
-        if len(missing_plugins) > 1:
-            raise DependencyNotFoundError(func, ", ".join(missing_plugins), "Missing dependencies: '{package}'!")
-
-        raise DependencyNotFoundError(func, missing_plugins[0])
-
-    def _render_metrics(
-        self, clip: vs.VideoNode, props: list[str],
-        ftf_diff_thr: float, func: FuncExceptT | None = None
-    ) -> dict[str, Any]:
-        """Render over the clip and gather metrics."""
-        func = func or self.process
-
-        matches: list[str] = []
-        matches_map = ["p", "c", "n", "b", "u"]
-
-        scenechanges: list[int] = []
-
-        combs: list[int] = []
-
-        mics: list[list[int]] = []
-        mmetrics: list[list[int]] = []
-        vmetrics: list[list[int]] = []
-
-        vdec_max_block: list[int] = []
-        vdec_drop: list[int] = []
-
-        ftf_diff0: list[tuple[int, float]] = []
-        # ftf_diff1: list[tuple[int, float]] = []
-        # ftf_diff2: list[tuple[int, float]] = []
-
-        def _cb(n: int, f: vs.VideoFrame) -> None:
-            for p in props:
-                match p:
-                    case "VFMMatch": matches.append(matches_map[get_prop(f, p, int, None, 0, func=func)])
-                    case "_Combed":
-                        if get_prop(f, p, int, None, 0, func=func):
-                            combs.append(n)
-                    case "Scenechange":
-                        if get_prop(f, p, int, func=func):
-                            scenechanges.append(n)
-                    case "_PrevSceneChange":
-                        # TODO: I can't get clips to actually preview with SCXVID, so can't test them. plsfix!
-                        raise CustomNotImplementedError(None, func, reason="dev skill issue")
-                    case "VFMMics": mics.append(get_prop(f, p, list, list[int], func=func))
-                    case "MMetrics": mmetrics.append(get_prop(f, p, list, list[int], func=func))
-                    case "VMetrics": vmetrics.append(get_prop(f, p, list, list[int], func=func))
-                    case "VDecimateMaxBlockDiff": vdec_max_block.append(get_prop(f, p, int, func=func))
-                    case "VDecimateDrop": vdec_drop.append(get_prop(f, p, int, func=func))
-                    # TODO: make this way less bad
-                    case "FtfDiff0":
-                        if not ftf_diff_thr:
-                            continue
-
-                        field_diff = abs(
-                            get_prop(f, "fbAvg0", float | int, float)  # type:ignore[call-overload]
-                            - get_prop(f, "ftAvg0", float | int, float)  # type:ignore[call-overload]
-                        )
-
-                        if field_diff > ftf_diff_thr:
-                            ftf_diff0.append((n, field_diff))
-                    # case "FtfDiff1":
-                    #     field_diff = abs(
-                    #         get_prop(f, "fbAvg1", float | int, float)  # type:ignore[call-overload]
-                    #         - get_prop(f, "ftAvg1", float | int, float)  # type:ignore[call-overload]
-                    #     )
-
-                    #     if field_diff > ftf_diff_thr:
-                    #         ftf_diff1.append((n, field_diff))
-                    # case "FtfDiff2":
-                    #     field_diff = abs(
-                    #         get_prop(f, "fbAvg2", float | int, float)  # type:ignore[call-overload]
-                    #         - get_prop(f, "ftAvg2", float | int, float)  # type:ignore[call-overload]
-                    #     )
-
-                    #     if field_diff > ftf_diff_thr:
-                    #         ftf_diff2.append((n, field_diff))
-                    case _: continue
-
-        clip_async_render(clip, progress="Gathering metrics...", callback=_cb)
-
-        return {
-            "matches": matches,
-            "scenechanges": scenechanges,
-            "combed_frames": combs,
-            "mics": mics,
-            "mmetrics": mmetrics,
-            "vmetrics": vmetrics,
-            "vdecimate_max_block_diff": vdec_max_block,
-            "vdecimate_drop": vdec_drop,
-            "ftf_diff_0": ftf_diff0,
-            # "ftf_diff_1": ftf_diff1,
-            # "ftf_diff_2": ftf_diff2,
-        }
-
-    def _write_wob_file(
-        self, work_clip: vs.VideoNode,
-        in_file: str, out_file: SPath,
-        trims: FrameRangesN, metrics: dict[str, Any]
-    ) -> None:
-        from .._metadata import __version__
+        for k, v in self.config.vdec._asdict().items():
+            vdec_out |= {k: float(v) if isinstance(v, bool) else v}
 
         out_dict = {
             "wobbly version": 6,
             "project format version": 2,
             "generated with": f"vs-deinterlace v{__version__}",  # TODO: get package name directly
-            "input file": in_file,
-            "input frame rate": [work_clip.fps.numerator, work_clip.fps.denominator],
-            "input resolution": [work_clip.width, work_clip.height],
-            "trim": [] if not trims else [[s, e] for s, e in trims],  # type:ignore[misc]
-            # TODO: VFM params
-            # TODO: video_heuristics params
-            "mics": metrics.get("mics", []),
-            "mmetrics": metrics.get("mmetrics", []),
-            "matches": metrics.get("matches", ""),
-            "original matches": metrics.get("matches", ""),
-            "combed frames": metrics.get("combed_frames", []),
-            "decimated frames": metrics.get("vdecimate_drop", []),
-            "decimate metrics": metrics.get("vdecimate_max_block_diff", []),
-            "sections": self._to_sections(metrics.get("scenechanges", [])),
-            "source filter": self._guess_idx(SPath(in_file)),
-            "interlaced fades": self._get_fades(metrics.get("ftf_diff_0", []))
+            "input file": video_path.as_posix(),
+            "input frame rate": [self.clip.fps.numerator, self.clip.fps.denominator],
+            "input resolution": [width, height],
+            "trim": [] if not self.trims else [[s, e] for s, e in self.trims],  # type:ignore[misc]
+            "vfm parameters": vfm_out,
+            "vdecimate parameters": vdec_out,
+            "mics": mics,
+            "mmetrics": mmetrics,
+            "matches": matches,
+            "original matches": matches,
+            "combed frames": combed,
+            "decimated frames": dec_drop,
+            "decimate metrics": dec_metrics,
+            "sections": self._to_sections(scenechanges),
+            "source filter": self._guess_idx(video_path),
+            "interlaced fades": i_fades
         }
 
-        out_file.touch(exist_ok=True)
+        out_path.touch(exist_ok=True)
 
-        with open(out_file, "w", encoding="utf-8") as f:
+        with open("test.wob", "w", encoding="utf-8") as f:
             json.dump(out_dict, f, ensure_ascii=False, indent=4)
+
+        return out_path
 
     def _to_sections(self, scenechanges: list[int]) -> list[dict[str, Any]]:
         sections: list[dict[str, Any]] = []
@@ -376,15 +307,7 @@ class Wibbly:
         match in_file.suffix:
             case ".dgi": return "dgdecodenv.DGSource"
             case ".d2v": return "d2v.Source"
-            case "mp4" | "m4v" | "mov": return "lsmas.LibavSMASHSource"
+            case ".mp4" | ".m4v" | ".mov": return "lsmas.LibavSMASHSource"
             case _: pass
 
         return "lsmas.LWLibavSource"
-
-    def _get_fades(self, fades: list[tuple[int, float]]) -> list[dict[str, float | int]]:
-        out: list[dict[str, float | int]] = []
-
-        for frame, fade in fades:
-            out += [{"frame": frame, "field difference": fade}]
-
-        return out
