@@ -6,7 +6,7 @@ from typing import Any, NamedTuple
 
 from vstools import (CustomValueError, FunctionUtil, Keyframes,
                      SceneChangeMode, SPath, SPathLike, clip_async_render,
-                     core, get_prop, get_y, normalize_ranges, vs)
+                     core, get_prop, get_y, normalize_ranges, vs, FramePropError)
 
 from .types import Types
 
@@ -200,7 +200,7 @@ class Wibbly:
         if video_path is None:
             try:
                 video_path = get_prop(self.clip, "idx_path", bytes).decode()
-            except:
+            except (FramePropError, TypeError):
                 raise CustomValueError("You must pass a path to the video file!", self.to_file)
 
         video_path = SPath(video_path)

@@ -2,7 +2,7 @@ import json
 from dataclasses import dataclass
 from fractions import Fraction
 from math import ceil
-from typing import Any, Literal
+from typing import Any
 
 from vstools import (CustomValueError, FieldBased, FileNotExistsError, Keyframes, SPath, SPathLike, Timecodes, core,
                      get_prop, replace_ranges, vs)
@@ -229,7 +229,7 @@ def parse_wobbly(
             # TODO: throw a proper error later once I have to actually test this properly
             print(f"file mismatch ({idx_path} != {input_file})")
 
-    if bool(len(illegal_chars := set(matches) - {*FieldMatch.__args__})):  # type:ignore[attr-defined]
+    if bool(len(illegal_chars := set(matches) - {*Types.Match.__args__})):  # type:ignore[attr-defined]
         raise CustomValueError(f"Illegal characters found in matches {tuple(illegal_chars)}", parse_wobbly)
 
     fades = [(fade.get("frame"), fade.get("field difference")) for fade in (dict(f) for f in fades)]
