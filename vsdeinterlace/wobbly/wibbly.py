@@ -291,6 +291,21 @@ class Wibbly:
 
         return out_path
 
+    def all_matches_to_c(self) -> None:
+        """Sets all matches to C matches."""
+        if not self.metrics:
+            raise CustomValueError(
+                "You must generate metrics before you can write them to a file!", self.all_matches_to_c
+            )
+
+        new_metrics: list[FrameMetric] = []
+
+        for metric in self.metrics:
+            metric.match = "c"
+            new_metrics.append(metric)
+
+        self.metrics = new_metrics
+
     def _to_sections(self, scenechanges: list[int]) -> list[dict[str, Any]]:
         sections: list[dict[str, Any]] = []
 
