@@ -8,10 +8,7 @@ from vstools import (CustomValueError, FieldBased, FileNotExistsError, Keyframes
                      get_prop, replace_ranges, vs)
 
 from ..combing import fix_telecined_fades
-
-FieldMatch = Literal["c", "n", "b", "u", "p"]
-"""A type representing possible fieldmatches."""
-
+from .types import Types
 
 __all__ = [
     "WobblyParsed", "parse_wobbly"
@@ -40,7 +37,7 @@ class WobblyParsed:
     combs: list[int]
     """A list of combed frames. Frames with interlaced fades will be excluded."""
 
-    orphans: list[tuple[int, FieldMatch]]
+    orphans: list[tuple[int, Types.Match]]
     """A list of orphan fields and the type of fieldmatch for that frame."""
 
     decimations: list[int]
