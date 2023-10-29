@@ -1,20 +1,21 @@
 # vs-deinterlace
 
 ### VapourSynth deinterlacing and interlaced/telecined content helper functions
+
 <br>
 
-You can find support in the [IEW Discord server](https://discord.gg/qxTxVJGtst).
-<br><br>
+For support you can find me in my [Discord server](https://discord.gg/setsugen), @setsugen_no_ao. <br><br>
+
 ## How to install
 
 Install `vsdeinterlace` with the following command:
 
 ```sh
-$ pip install vsdeinterlace
+pip install vsdeinterlace
 ```
 
 Or if you want the latest git version, install it with this command:
 
 ```sh
-$ pip install git+https://github.com/Irrational-Encoding-Wizardry/vs-deinterlace.git
+pip install git+https://github.com/Setsugennoao/vs-deinterlace.git
 ```
