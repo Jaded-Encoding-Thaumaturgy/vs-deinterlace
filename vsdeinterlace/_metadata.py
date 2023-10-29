@@ -1,6 +1,6 @@
 """VapourSynth deinterlacing and interlaced/telecined content helper functions"""
 
-__version__ = '0.5.1'
+__version__ = '0.6.0'
 
 __author_name__, __author_email__ = 'Setsugen no ao', 'setsugen@setsugen.dev'
 __maintainer_name__, __maintainer_email__ = __author_name__, __author_email__
