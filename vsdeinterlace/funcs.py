@@ -65,7 +65,7 @@ def pulldown_credits(
 
     InvalidFramerateError.check(pulldown_credits, clip, (30000, 1001))
 
-    tff = FieldBased.from_param(tff, pulldown_credits) or FieldBased.from_video(clip, True)
+    tff = FieldBased.from_param_or_video(tff, clip, True, pulldown_credits)
     clip = FieldBased.ensure_presence(clip, tff)
 
     qtgmc_kwargs = dict[str, Any](
