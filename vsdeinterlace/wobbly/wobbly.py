@@ -43,8 +43,8 @@ class WobblyParsed:
     decimations: list[int]
     """A list of decimated frames."""
 
-    scenechanges: Keyframes
-    """Scenechanges (sections) represented as a Keyframes object."""
+    sections: Keyframes
+    """Sections represented as a Keyframes object."""
 
     timecodes: Timecodes
     """The timecodes represented as a Timecode object."""
@@ -218,7 +218,7 @@ def parse_wobbly(
     matches = data.get("matches", [])
     combs = data.get("combed frames", [])
     decimations = data.get("decimated frames", [])
-    sections = data.get("sections", [])
+    sections = data.get("sections", [{}])
     fades = data.get("interlaced fades", [])
     # TODO: See if we can somehow hack in 60p support. Probably have users set a prop with `presets`? Maybe in `Wibbly`?
     # presets = data.get("presets", [])
@@ -231,6 +231,8 @@ def parse_wobbly(
 
     if bool(len(illegal_chars := set(matches) - {*Types.Match.__args__})):  # type:ignore[attr-defined]
         raise CustomValueError(f"Illegal characters found in matches {tuple(illegal_chars)}", parse_wobbly)
+
+    sections = Keyframes([section.get("start", 0) for section in sections])
 
     fades = [(fade.get("frame"), fade.get("field difference")) for fade in (dict(f) for f in fades)]
 
@@ -251,7 +253,7 @@ def parse_wobbly(
         combs=list(set(combs) - set([f for f, _ in fades])),
         orphans=[(o, matches[o]) for o in data.get("orphan frames", [])],   # type:ignore[misc]
         decimations=decimations,
-        scenechanges=sections,
+        sections=Keyframes(sections),
         timecodes=Timecodes(sections),
         interlaced_fades=fades,
         freezes=[tuple(freeze) for freeze in data.get("frozen frames", [])]  # type:ignore[misc]
