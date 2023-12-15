@@ -40,6 +40,8 @@ def fix_telecined_fades(
 
     if not complexpr_available:
         raise ExprVars._get_akarin_err()(func=func)
+    
+    tff = FieldBased.from_param_or_video(tff, clip, True, func)
 
     clip = FieldBased.ensure_presence(clip, tff, func)
 
@@ -59,9 +61,10 @@ def fix_telecined_fades(
     )
 
     fix = norm_expr(
-        props_clip, 'Y 2 % BF! BF@ x.fbAvg{i} x.ftAvg{i} ? AVG! '
-        'AVG@ 0 = x x {color} - AVG@ BF@ x.ftAvg{i} x.fbAvg{i} ? + 2 / AVG@ / * ? {color} +',
-        planes, i=f.norm_planes, color=colors, force_akarin=func
+        props_clip, 'Y 2 % BF! BF@ x.f{t1}Avg{i} x.f{t2}Avg{i} ? AVG! '
+        'AVG@ 0 = x x {color} - AVG@ BF@ x.f{t1}Avg{i} x.f{t2}Avg{i} ? + 2 / AVG@ / * ? {color} +',
+        planes, i=f.norm_planes, color=colors, force_akarin=func,
+        t1='b' if tff.is_tff else 't', t2='t' if tff.is_tff else 'b'
     )
 
     return f.return_clip(fix)
