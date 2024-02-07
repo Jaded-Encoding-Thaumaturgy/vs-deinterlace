@@ -21,7 +21,12 @@ def fix_telecined_fades(
     planes: PlanesT = None, func: FuncExceptT | None = None
 ) -> vs.VideoNode:
     """
-    Give a mathematically perfect solution to fades made *after* telecining (which made perfect IVTC impossible).
+    Give a mathematically perfect solution to decombing fades made *after* telecining
+    (which made perfect IVTC impossible) that start or end in a solid color.
+
+    Steps between the frames are not adjusted, so they will remain uneven depending on the telecining pattern,
+    but the decombing is blur-free, ensuring minimum information loss. However, this may cause small amounts
+    of combing to remain due to error amplification, especially near the solid-color end of the fade.
 
     This is an improved version of the Fix-Telecined-Fades plugin.
 
@@ -30,9 +35,10 @@ def fix_telecined_fades(
     :param clip:                            Clip to process.
     :param tff:                             This parameter is deprecated and unused. It will be removed in
                                             the future, so prefer keyword arguments and avoid passing `tff`.
-    :param colors:                          Color offset for the plane average.
+    :param colors:                          Fade source/target color (floating-point plane averages).
 
-    :return:                                Clip with fades (and only fades) accurately deinterlaced.
+    :return:                                Clip with fades to/from `colors` accurately deinterlaced.
+                                            Frames that don't contain such fades may be damaged.
     """
     func = func or fix_telecined_fades
 
