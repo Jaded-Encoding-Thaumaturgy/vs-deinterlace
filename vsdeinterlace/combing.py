@@ -5,8 +5,8 @@ from typing import cast
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, depth, expect_bits,
-    get_neutral_values, scale_8bit, vs
+    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, MissingT, PlanesT,
+    core, depth, expect_bits, get_neutral_values, scale_8bit, vs
 )
 
 __all__ = [
@@ -17,7 +17,7 @@ __all__ = [
 
 
 def fix_telecined_fades(
-    clip: vs.VideoNode, tff: bool | FieldBasedT | None = None, colors: float | list[float] = 0.0,
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None | MissingT = MISSING, colors: float | list[float] = 0.0,
     planes: PlanesT = None, func: FuncExceptT | None = None
 ) -> vs.VideoNode:
     """
@@ -28,18 +28,19 @@ def fix_telecined_fades(
     Make sure to run this *after* IVTC/deinterlacing!
 
     :param clip:                            Clip to process.
-    :param tff:                             Top-field-first. `False` sets it to Bottom-Field-First.
-                                            If `None`, get the field order from the _FieldBased prop.
+    :param tff:                             This parameter is deprecated and unused. It will be removed in
+                                            the future, so prefer keyword arguments and avoid passing `tff`.
     :param colors:                          Color offset for the plane average.
 
     :return:                                Clip with fades (and only fades) accurately deinterlaced.
-
-    :raises UndefinedFieldBasedError:       No automatic ``tff`` can be determined.
     """
     func = func or fix_telecined_fades
 
     if not complexpr_available:
         raise ExprVars._get_akarin_err()(func=func)
+
+    if tff is not MISSING:
+        print(DeprecationWarning('fix_telecined_fades: The tff parameter is unnecessary and therefore deprecated!'))
 
     f = FunctionUtil(clip, func, planes, (vs.GRAY, vs.YUV), 32)
 
