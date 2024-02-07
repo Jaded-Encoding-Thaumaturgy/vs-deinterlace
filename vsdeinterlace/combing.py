@@ -5,7 +5,7 @@ from typing import cast
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, depth, expect_bits,
+    ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, depth, expect_bits,
     get_neutral_values, scale_8bit, vs
 )
 
@@ -40,14 +40,10 @@ def fix_telecined_fades(
 
     if not complexpr_available:
         raise ExprVars._get_akarin_err()(func=func)
-    
-    tff = FieldBased.from_param_or_video(tff, clip, True, func)
-
-    clip = FieldBased.ensure_presence(clip, tff, func)
 
     f = FunctionUtil(clip, func, planes, (vs.GRAY, vs.YUV), 32)
 
-    fields = f.work_clip.std.Limiter().std.SeparateFields()
+    fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
 
     for i in f.norm_planes:
         fields = fields.std.PlaneStats(None, i, f'P{i}')
@@ -61,10 +57,9 @@ def fix_telecined_fades(
     )
 
     fix = norm_expr(
-        props_clip, 'Y 2 % x.f{t1}Avg{i} x.f{t2}Avg{i} ? AVG! '
+        props_clip, 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! '
         'AVG@ 0 = x x {color} - x.ftAvg{i} x.fbAvg{i} + 2 / AVG@ / * ? {color} +',
         planes, i=f.norm_planes, color=colors, force_akarin=func,
-        t1='b' if tff.is_tff else 't', t2='t' if tff.is_tff else 'b'
     )
 
     return f.return_clip(fix)
