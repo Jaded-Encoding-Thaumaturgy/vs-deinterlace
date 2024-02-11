@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, overload
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    ConvMode, CustomEnum, FieldBased, FieldBasedT, FuncExceptT, FunctionUtil, PlanesT, core, depth, expect_bits,
-    get_neutral_values, scale_8bit, vs
+    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, MissingT, PlanesT,
+    core, depth, expect_bits, get_neutral_values, scale_8bit, vs
 )
 
 __all__ = [
@@ -16,38 +16,66 @@ __all__ = [
 ]
 
 
+@overload
 def fix_telecined_fades(
-    clip: vs.VideoNode, tff: bool | FieldBasedT | None = None, colors: float | list[float] = 0.0,
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None, colors: float | list[float] = 0.0,
     planes: PlanesT = None, func: FuncExceptT | None = None
 ) -> vs.VideoNode:
+    ...
+
+@overload
+def fix_telecined_fades(
+    clip: vs.VideoNode, colors: float | list[float] = 0.0,
+    planes: PlanesT = None, func: FuncExceptT | None = None
+) -> vs.VideoNode:
+    ...
+
+def fix_telecined_fades(  # type: ignore[misc]
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None | float | list[float] | MissingT = MISSING,
+    colors: float | list[float] | PlanesT = 0.0,
+    planes: PlanesT | FuncExceptT = None, func: FuncExceptT | None = None
+) -> vs.VideoNode:
     """
-    Give a mathematically perfect solution to fades made *after* telecining (which made perfect IVTC impossible).
+    Give a mathematically perfect solution to decombing fades made *after* telecining
+    (which made perfect IVTC impossible) that start or end in a solid color.
+
+    Steps between the frames are not adjusted, so they will remain uneven depending on the telecining pattern,
+    but the decombing is blur-free, ensuring minimum information loss. However, this may cause small amounts
+    of combing to remain due to error amplification, especially near the solid-color end of the fade.
 
     This is an improved version of the Fix-Telecined-Fades plugin.
 
     Make sure to run this *after* IVTC/deinterlacing!
 
     :param clip:                            Clip to process.
-    :param tff:                             Top-field-first. `False` sets it to Bottom-Field-First.
-                                            If `None`, get the field order from the _FieldBased prop.
-    :param colors:                          Color offset for the plane average.
+    :param tff:                             This parameter is deprecated and unused. It will be removed in the future.
+    :param colors:                          Fade source/target color (floating-point plane averages).
 
-    :return:                                Clip with fades (and only fades) accurately deinterlaced.
-
-    :raises UndefinedFieldBasedError:       No automatic ``tff`` can be determined.
+    :return:                                Clip with fades to/from `colors` accurately deinterlaced.
+                                            Frames that don't contain such fades may be damaged.
     """
+    # Gracefully handle positional arguments that either include or
+    # exclude tff, hopefully without interfering with keyword arguments.
+    # Remove this block when tff is fully dropped from the parameter list.
+    if isinstance(tff, (float, list)):
+        if colors == 0.0:
+            tff, colors = MISSING, tff
+        elif planes is None:
+            tff, colors, planes = MISSING, tff, colors
+        else:
+            tff, colors, planes, func = MISSING, tff, colors, planes
+
     func = func or fix_telecined_fades
 
     if not complexpr_available:
         raise ExprVars._get_akarin_err()(func=func)
-    
-    tff = FieldBased.from_param_or_video(tff, clip, True, func)
 
-    clip = FieldBased.ensure_presence(clip, tff, func)
+    if tff is not MISSING:
+        print(DeprecationWarning('fix_telecined_fades: The tff parameter is unnecessary and therefore deprecated!'))
 
     f = FunctionUtil(clip, func, planes, (vs.GRAY, vs.YUV), 32)
 
-    fields = f.work_clip.std.Limiter().std.SeparateFields()
+    fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
 
     for i in f.norm_planes:
         fields = fields.std.PlaneStats(None, i, f'P{i}')
@@ -61,10 +89,9 @@ def fix_telecined_fades(
     )
 
     fix = norm_expr(
-        props_clip, 'Y 2 % BF! BF@ x.f{t1}Avg{i} x.f{t2}Avg{i} ? AVG! '
-        'AVG@ 0 = x x {color} - AVG@ BF@ x.f{t1}Avg{i} x.f{t2}Avg{i} ? + 2 / AVG@ / * ? {color} +',
+        props_clip, 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! '
+        'AVG@ 0 = x x {color} - x.ftAvg{i} x.fbAvg{i} + 2 / AVG@ / * ? {color} +',
         planes, i=f.norm_planes, color=colors, force_akarin=func,
-        t1='b' if tff.is_tff else 't', t2='t' if tff.is_tff else 'b'
     )
 
     return f.return_clip(fix)
