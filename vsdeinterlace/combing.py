@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import cast
+from typing import cast, overload
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
@@ -16,9 +16,24 @@ __all__ = [
 ]
 
 
+@overload
 def fix_telecined_fades(
-    clip: vs.VideoNode, tff: bool | FieldBasedT | None | MissingT = MISSING, colors: float | list[float] = 0.0,
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None, colors: float | list[float] = 0.0,
     planes: PlanesT = None, func: FuncExceptT | None = None
+) -> vs.VideoNode:
+    ...
+
+@overload
+def fix_telecined_fades(
+    clip: vs.VideoNode, colors: float | list[float] = 0.0,
+    planes: PlanesT = None, func: FuncExceptT | None = None
+) -> vs.VideoNode:
+    ...
+
+def fix_telecined_fades(  # type: ignore[misc]
+    clip: vs.VideoNode, tff: bool | FieldBasedT | None | float | list[float] | MissingT = MISSING,
+    colors: float | list[float] | PlanesT = 0.0,
+    planes: PlanesT | FuncExceptT = None, func: FuncExceptT | None = None
 ) -> vs.VideoNode:
     """
     Give a mathematically perfect solution to decombing fades made *after* telecining
@@ -33,13 +48,23 @@ def fix_telecined_fades(
     Make sure to run this *after* IVTC/deinterlacing!
 
     :param clip:                            Clip to process.
-    :param tff:                             This parameter is deprecated and unused. It will be removed in
-                                            the future, so prefer keyword arguments and avoid passing `tff`.
+    :param tff:                             This parameter is deprecated and unused. It will be removed in the future.
     :param colors:                          Fade source/target color (floating-point plane averages).
 
     :return:                                Clip with fades to/from `colors` accurately deinterlaced.
                                             Frames that don't contain such fades may be damaged.
     """
+    # Gracefully handle positional arguments that either include or
+    # exclude tff, hopefully without interfering with keyword arguments.
+    # Remove this block when tff is fully dropped from the parameter list.
+    if isinstance(tff, (float, list)):
+        if colors == 0.0:
+            tff, colors = MISSING, tff
+        elif planes is None:
+            tff, colors, planes = MISSING, tff, colors
+        else:
+            tff, colors, planes, func = MISSING, tff, colors, planes
+
     func = func or fix_telecined_fades
 
     if not complexpr_available:
