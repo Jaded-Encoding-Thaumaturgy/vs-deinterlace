@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast, overload
+from typing import cast, overload
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
-from vsrgtools import sbr
 from vstools import (
-    MISSING, ConvMode, CustomEnum, CustomIntEnum, FieldBasedT, FuncExceptT, FunctionUtil, MissingT, PlanesT, core,
-    depth, expect_bits, get_neutral_values, scale_8bit, vs
+    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil,
+    MissingT, PlanesT, core, scale_8bit, vs, GenericVSFunction
 )
+from functools import partial
 import warnings
 
 __all__ = [
@@ -164,64 +164,35 @@ class FixInterlacedFades(CustomEnum):
         return f.return_clip(fix)
 
 
-class Vinverse(CustomEnum):
-    V1 = object()
-    V2 = object()
-    MASKED = object()
-    MASKEDV1 = object()
-    MASKEDV2 = object()
+def vinverse(
+    clip: vs.VideoNode,
+    blur: GenericVSFunction = partial(core.std.Convolution, matrix=[1, 2, 1], mode=ConvMode.VERTICAL),
+    blur2: GenericVSFunction = partial(core.std.Convolution, matrix=[1, 4, 6, 4, 1], mode=ConvMode.VERTICAL),
+    csstr: float = 2.7, scale: float = 0.25, threshold: int = 255, planes: PlanesT = None
+) -> vs.VideoNode:
+    """
+    A simple but effective plugin to remove residual combing. Based on an AviSynth script by Didée.
 
-    def __call__(
-        self, clip: vs.VideoNode, sstr: float = 2.7, amount: int = 255, scale: float = 0.25,
-        mode: ConvMode = ConvMode.VERTICAL, planes: PlanesT = None
-    ) -> vs.VideoNode:
-        if amount <= 0:
-            return clip
+    :param clip: Clip to process.
+    :param blur: Filter used to remove combing.
+    :param blur2: Filter used to calculate contra sharpening.
+    :param csstr: Strength of contra sharpening.
+    :param threshold: Change no pixel by more than this (default=255: unrestricted).
+    :param scale: Scale factor for vshrpD*vblurD < 0.
+    """
 
-        clip, bits = expect_bits(clip, 32)
+    blur = blur(clip, planes=planes)
+    blur2 = blur2(blur, planes=planes)
 
-        neutral = get_neutral_values(clip)
+    decomb = norm_expr(
+        [clip, blur, blur2],
+        'y z - {csstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
+        'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scale} * D1A@ D2A@ < D1@ D2@ ? ? y + '
+        'LIM! x {thr} + LIM@ < x {thr} + x {thr} - LIM@ > x {thr} - LIM@ ? ?',
+        planes, csstr=csstr, scale=scale, thr=scale_8bit(clip, threshold),
+    )
 
-        expr = f'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
-        expr += f'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scale} * D1A@ D2A@ < D1@ D2@ ? ? y + '
-
-        if self in {Vinverse.V1, Vinverse.MASKEDV1}:
-            blur = clip.std.Convolution([50, 99, 50], mode=mode, planes=planes)
-            blur2 = blur.std.Convolution([1, 4, 6, 4, 1], mode=mode, planes=planes)
-        elif self in {Vinverse.V2, Vinverse.MASKEDV2}:
-            blur = sbr(clip, mode=mode, planes=planes)
-            blur2 = blur.std.Convolution([1, 2, 1], mode=mode, planes=planes)
-
-        if self in {Vinverse.MASKED, Vinverse.MASKEDV1, Vinverse.MASKEDV2}:
-            search_str = 'x[-1,0] x[1,0]' if mode == ConvMode.HORIZONTAL else 'x[0,-1] x[0,1]'
-            mask_search_str = search_str.replace('x', 'y')
-
-            if self is Vinverse.MASKED:
-                find_combs = norm_expr(clip, f'x x 2 * {search_str} + + 4 / - {{n}} +', planes, n=neutral)
-                decomb = norm_expr(
-                    [find_combs, clip],
-                    'x x 2 * {search_str} + + 4 / - B! y B@ x {n} - * 0 '
-                    '< {n} B@ abs x {n} - abs < B@ {n} + x ? ? - {n} +', n=neutral, search_str=search_str
-                )
-            else:
-                decomb = norm_expr(
-                    [clip, blur, blur2], 'x x 2 * y + 4 / - {n} + FC! FC@ FC@ 2 * y z - {n} + + 4 / - B! '
-                    'x B@ FC@ {n} - * 0 < {n} B@ abs FC@ {n} - abs < B@ {n} + FC@ ? ? - {n} +', n=neutral
-                )
-
-            return norm_expr(
-                [clip, decomb], f'{scale_8bit(clip, amount)} a! y y y y 2 * {mask_search_str} + + 4 / - {sstr} '
-                '* + y - {n} + D1! x y - {n} + D2! D1@ {n} - D2@ {n} - * 0 < D1@ {n} - abs D2@ {n} - abs < D1@ '
-                'D2@ ? {n} - {scale} * {n} + D1@ {n} - abs D2@ {n} - abs < D1@ D2@ ? ? {n} - + merge! '
-                'x a@ + merge@ < x a@ + x a@ - merge@ > x a@ - merge@ ? ?', n=neutral, scale=scale
-            )
-
-        if amount < 255:
-            amn = scale_8bit(clip, amount)
-            expr += f'LIM! x {amn} + LIM@ < x {amn} + x {amn} - LIM@ > x {amn} - LIM@ ? ?'
-
-        return depth(norm_expr([clip, blur, blur2], expr, planes), bits)
+    return decomb
 
 
 fix_interlaced_fades = cast(FixInterlacedFades, FixInterlacedFades.Average)
-vinverse = cast(Vinverse, Vinverse.V1)
