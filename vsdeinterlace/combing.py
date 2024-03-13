@@ -104,12 +104,12 @@ def fix_telecined_fades(  # type: ignore[misc]
     return f.return_clip(fix)
 
 
-class fix_interlaced_fades(CustomIntEnum):
-    Average = 0
-    Darken = 1
-    Brighten = 2
+class FixInterlacedFades(CustomEnum):
+    Average = object()
+    Darken = object()
+    Brighten = object()
 
-    def __call__(  # type: ignore[misc]
+    def __call__(
         self, clip: vs.VideoNode, colors: float | list[float] | PlanesT = 0.0,
         planes: PlanesT | FuncExceptT = None, func: FuncExceptT | None = None
     ) -> vs.VideoNode:
@@ -151,13 +151,13 @@ class fix_interlaced_fades(CustomIntEnum):
             }
         )
 
-        expr_mode = ['+ 2 /', 'min', 'max']
+        expr_mode = '+ 2 /' if self == self.Average else ('min' if self == self.Darken else 'max')
 
         fix = norm_expr(
             props_clip, 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! '
             'AVG@ 0 = x x {color} - x.ftAvg{i} x.fbAvg{i} '
             '{expr_mode} AVG@ / * ? {color} +',
-            planes, i=f.norm_planes, expr_mode=expr_mode[self],
+            planes, i=f.norm_planes, expr_mode=expr_mode,
             color=colors, force_akarin=func,
         )
 
@@ -223,4 +223,5 @@ class Vinverse(CustomEnum):
         return depth(norm_expr([clip, blur, blur2], expr, planes), bits)
 
 
+fix_interlaced_fades = cast(FixInterlacedFades, FixInterlacedFades.Average)
 vinverse = cast(Vinverse, Vinverse.V1)
