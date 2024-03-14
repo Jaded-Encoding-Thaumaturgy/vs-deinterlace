@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast, overload
+from typing import cast, overload
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
@@ -59,7 +59,10 @@ def fix_telecined_fades(  # type: ignore[misc]
                                             Frames that don't contain such fades may be damaged.
     """
 
-    warnings.warn('fix_telecined_fades: This function is deprecated and as such it will be removed in the future! Please use "fix_interlaced_fades".')
+    warnings.warn(
+        'fix_telecined_fades: This function is deprecated and as such it will be removed in the future! '
+        'Please use "fix_interlaced_fades".'
+    )
 
     # Gracefully handle positional arguments that either include or
     # exclude tff, hopefully without interfering with keyword arguments.
