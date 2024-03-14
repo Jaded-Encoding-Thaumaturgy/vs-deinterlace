@@ -136,7 +136,7 @@ class FixInterlacedFades(CustomEnum):
         if not complexpr_available:
             raise ExprVars._get_akarin_err()(func=func)
 
-        f = FunctionUtil(clip, func, planes, (vs.GRAY, vs.YUV), 32)
+        f = FunctionUtil(clip, func, planes, None, 32)
 
         fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
 
