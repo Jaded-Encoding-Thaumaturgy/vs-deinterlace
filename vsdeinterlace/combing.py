@@ -168,7 +168,7 @@ def vinverse(
     clip: vs.VideoNode,
     blur: GenericVSFunction = partial(core.std.Convolution, matrix=[1, 2, 1], mode=ConvMode.VERTICAL),
     blur2: GenericVSFunction = partial(core.std.Convolution, matrix=[1, 4, 6, 4, 1], mode=ConvMode.VERTICAL),
-    csstr: float = 2.7, scale: float = 0.25, threshold: int = 255, planes: PlanesT = None
+    sstr: float = 2.7, amnt: int = 255, scl: float = 0.25, planes: PlanesT = None
 ) -> vs.VideoNode:
     """
     A simple but effective plugin to remove residual combing. Based on an AviSynth script by Didée.
@@ -176,9 +176,9 @@ def vinverse(
     :param clip: Clip to process.
     :param blur: Filter used to remove combing.
     :param blur2: Filter used to calculate contra sharpening.
-    :param csstr: Strength of contra sharpening.
-    :param threshold: Change no pixel by more than this (default=255: unrestricted).
-    :param scale: Scale factor for vshrpD*vblurD < 0.
+    :param sstr: Strength of contra sharpening.
+    :param amnt: Change no pixel by more than this (default=255: unrestricted).
+    :param scl: Scale factor for vshrpD*vblurD < 0.
     """
 
     blur = blur(clip, planes=planes)
@@ -186,10 +186,10 @@ def vinverse(
 
     decomb = norm_expr(
         [clip, blur, blur2],
-        'y z - {csstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
-        'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scale} * D1A@ D2A@ < D1@ D2@ ? ? y + '
-        'LIM! x {thr} + LIM@ < x {thr} + x {thr} - LIM@ > x {thr} - LIM@ ? ?',
-        planes, csstr=csstr, scale=scale, thr=scale_8bit(clip, threshold),
+        'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
+        'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scl} * D1A@ D2A@ < D1@ D2@ ? ? y + '
+        'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ?',
+        planes, sstr=sstr, amnt=scale_8bit(clip, amnt), scl=scl,
     )
 
     return decomb
