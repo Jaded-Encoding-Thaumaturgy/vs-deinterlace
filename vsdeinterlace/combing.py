@@ -166,8 +166,8 @@ class FixInterlacedFades(CustomEnum):
 
 def vinverse(
     clip: vs.VideoNode,
-    blur: GenericVSFunction = partial(core.std.Convolution, matrix=[1, 2, 1], mode=ConvMode.VERTICAL),
-    blur2: GenericVSFunction = partial(core.std.Convolution, matrix=[1, 4, 6, 4, 1], mode=ConvMode.VERTICAL),
+    blur: GenericVSFunction = partial(core.proxied.std.Convolution, matrix=[1, 2, 1], mode=ConvMode.VERTICAL),
+    blur2: GenericVSFunction = partial(core.proxied.std.Convolution, matrix=[1, 4, 6, 4, 1], mode=ConvMode.VERTICAL),
     sstr: float = 2.7, amnt: int = 255, scl: float = 0.25, planes: PlanesT = None
 ) -> vs.VideoNode:
     """
