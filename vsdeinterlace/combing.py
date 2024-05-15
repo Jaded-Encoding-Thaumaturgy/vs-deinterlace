@@ -5,7 +5,7 @@ from typing import cast, overload
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import sbr
 from vstools import (
-    MISSING, ConvMode, CustomEnum, CustomIntEnum, FieldBasedT, FuncExceptT, FunctionUtil, MissingT, PlanesT, core,
+    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, MissingT, PlanesT, core,
     depth, expect_bits, get_neutral_values, scale_8bit, vs
 )
 import warnings
