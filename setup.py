@@ -28,7 +28,8 @@ setuptools.setup(
     install_requires=requirements,
     python_requires='>=3.12',
     packages=[
-        package_name
+        package_name,
+        f"{package_name}.wobbly"
     ],
     package_data={
         package_name: ['py.typed']
