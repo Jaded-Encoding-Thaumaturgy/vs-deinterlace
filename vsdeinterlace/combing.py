@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import warnings
+from functools import partial
 from typing import cast, overload
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vstools import (
-    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil,
-    MissingT, PlanesT, core, scale_8bit, vs, GenericVSFunction
+    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, GenericVSFunction, MissingT, PlanesT, core,
+    scale_8bit, vs
 )
-from functools import partial
-import warnings
 
 __all__ = [
     'fix_telecined_fades', 'fix_interlaced_fades',
@@ -59,7 +59,10 @@ def fix_telecined_fades(  # type: ignore[misc]
                                             Frames that don't contain such fades may be damaged.
     """
 
-    warnings.warn('fix_telecined_fades: This function is deprecated and as such it will be removed in the future! Please use "fix_interlaced_fades".')
+    warnings.warn(
+        'fix_telecined_fades: This function is deprecated and as such it will be removed in the future! '
+        'Please use "fix_interlaced_fades".'
+    )
 
     # Gracefully handle positional arguments that either include or
     # exclude tff, hopefully without interfering with keyword arguments.
@@ -136,7 +139,7 @@ class FixInterlacedFades(CustomEnum):
         if not complexpr_available:
             raise ExprVars._get_akarin_err()(func=func)
 
-        f = FunctionUtil(clip, func, planes, (vs.GRAY, vs.YUV), 32)
+        f = FunctionUtil(clip, func, planes, None, 32)
 
         fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
 
