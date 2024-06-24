@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import warnings
-from functools import partial
-from typing import cast, overload
+from typing import Any, Sequence, cast, overload
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
+from vsrgtools import BlurMatrix
 from vstools import (
-    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, GenericVSFunction, MissingT, PlanesT, core,
-    scale_8bit, vs
+    MISSING, ConvMode, CustomEnum, FieldBasedT, FuncExceptT, FunctionUtil, GenericVSFunction, KwargsT, MissingT,
+    PlanesT, core, scale_8bit, vs
 )
 
 __all__ = [
@@ -169,33 +169,46 @@ class FixInterlacedFades(CustomEnum):
 
 def vinverse(
     clip: vs.VideoNode,
-    blur: GenericVSFunction = partial(core.proxied.std.Convolution, matrix=[1, 2, 1], mode=ConvMode.VERTICAL),
-    blur2: GenericVSFunction = partial(core.proxied.std.Convolution, matrix=[1, 4, 6, 4, 1], mode=ConvMode.VERTICAL),
-    sstr: float = 2.7, amnt: int = 255, scl: float = 0.25, planes: PlanesT = None
+    comb_blur: GenericVSFunction | Sequence[int] = [1, 2, 1],
+    contra_blur: GenericVSFunction | Sequence[int] = [1, 4, 6, 4, 1],
+    contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25, planes: PlanesT = None,
+    **kwargs: Any
 ) -> vs.VideoNode:
     """
     A simple but effective plugin to remove residual combing. Based on an AviSynth script by Didée.
 
-    :param clip: Clip to process.
-    :param blur: Filter used to remove combing.
-    :param blur2: Filter used to calculate contra sharpening.
-    :param sstr: Strength of contra sharpening.
-    :param amnt: Change no pixel by more than this (default=255: unrestricted).
-    :param scl: Scale factor for vshrpD*vblurD < 0.
+    :param clip:            Clip to process.
+    :param comb_blur:       Filter used to remove combing.
+    :param contra_blur:     Filter used to calculate contra sharpening.
+    :param contra_str:      Strength of contra sharpening.
+    :param amnt:            Change no pixel by more than this in 8bit (default is 255, unrestricted).
+    :param scl:             Scale factor for vshrpD*vblurD < 0.
     """
 
-    blur = blur(clip, planes=planes)
-    blur2 = blur2(blur, planes=planes)
+    func = FunctionUtil(clip, vinverse, planes, vs.YUV, 32)
 
-    decomb = norm_expr(
-        [clip, blur, blur2],
+    def_k = KwargsT(mode=ConvMode.VERTICAL)
+
+    kwrg_a, kwrg_b = not callable(comb_blur), not callable(contra_blur)
+
+    if not callable(comb_blur):
+        comb_blur = BlurMatrix(comb_blur)
+
+    if not callable(contra_blur):
+        contra_blur = BlurMatrix(contra_blur)
+
+    blurred = comb_blur(func.work_clip, planes=planes, **((def_k | kwargs) if kwrg_a else kwargs))
+    blurred2 = contra_blur(blurred, planes=planes, **((def_k | kwargs) if kwrg_b else kwargs))
+
+    combed = norm_expr(
+        [func.work_clip, blurred, blurred2],
         'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
         'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scl} * D1A@ D2A@ < D1@ D2@ ? ? y + '
         'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ?',
-        planes, sstr=sstr, amnt=scale_8bit(clip, amnt), scl=scl,
+        planes, sstr=contra_str, amnt=scale_8bit(func.work_clip, amnt), scl=scl,
     )
 
-    return decomb
+    return func.return_clip(combed)
 
 
 fix_interlaced_fades = cast(FixInterlacedFades, FixInterlacedFades.Average)
