@@ -110,7 +110,9 @@ def pulldown_credits(
         jitter = bob_clip.std.SelectEvery(cycle, [p - invpos for p in pos])
 
         if assumefps:
-            jitter = core.std.AssumeFPS(bob_clip[0] * assumefps + jitter, **(ivtc_fps_div if cleanpos == 6 else ivtc_fps))
+            jitter = core.std.AssumeFPS(
+                bob_clip[0] * assumefps + jitter, **(ivtc_fps_div if cleanpos == 6 else ivtc_fps)
+            )
 
         comp = MVTools(jitter, **mv_args).flow_interpolate()
 
