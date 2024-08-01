@@ -13,7 +13,7 @@ __all__ = [
 
 def pulldown_credits(
     clip: vs.VideoNode, bob_clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
-    interlaced: bool = True, decimate: bool | None = None, mv_args: KwargsT | None = None
+    interlaced: bool = True, decimate: bool = False, mv_args: KwargsT | None = None
 ) -> vs.VideoNode:
     """
     Deinterlacing function for interlaced credits (60i/30p) on top of telecined video (24p).
@@ -36,8 +36,6 @@ def pulldown_credits(
     :param tff:                     Top-field-first. `False` sets it to Bottom-Field-First.
     :param interlaced:              60i credits. Set to false for 30p credits.
     :param decimate:                Decimate input clip as opposed to IVTC.
-                                    Automatically enabled if certain fieldmatching props are found.
-                                    Can be forcibly disabled by setting it to `False`.
     :param mv_args:                 Arguments to pass on to MVTools, used for motion compensation.
 
     :return:                        IVTC'd/decimated clip with credits pulled down to 24p.
@@ -52,15 +50,6 @@ def pulldown_credits(
 
     InvalidFramerateError.check(pulldown_credits, clip, (30000, 1001))
     InvalidFramerateError.check(pulldown_credits, bob_clip, (60000, 1001))
-
-    if decimate is not False:  # Automatically enable decimate unless set to False
-        decimate = any(x in clip.get_frame(0).props for x in {"VFMMatch", "TFMMatch"})
-
-        if decimate:
-            warnings.warn(
-                "pulldown_credits: Fieldmatched clip passed to function! decimate is now automatically set to `True`. "
-                "If you want to disable this, set `decimate=False`!"
-            )
 
     tff = FieldBased.from_param_or_video(tff, clip, True, pulldown_credits)
     clip = FieldBased.ensure_presence(clip, tff)
@@ -81,6 +70,17 @@ def pulldown_credits(
     assumefps = 0
 
     cycle = 10 // (1 + interlaced)
+
+    def bb(idx: int, cut: bool = False) -> vs.VideoNode:
+        if cut:
+            return bob_clip[cycle:].std.SelectEvery(cycle, [idx])
+        return bob_clip.std.SelectEvery(cycle, [idx])
+
+    def intl(clips: list[vs.VideoNode], toreverse: bool, halv: list[int]) -> vs.VideoNode:
+        clips = [c[::2] if i in halv else c for i, c in enumerate(clips)]
+        if not toreverse:
+            clips = list(reversed(clips))
+        return core.std.Interleave(clips)
 
     # 60i credits. Start of ABBCD
     if interlaced:
@@ -116,15 +116,10 @@ def pulldown_credits(
 
         comp = MVTools(jitter, **mv_args).flow_interpolate()
 
-        out = core.std.Interleave([comp[::2], clean] if decimate else [clean, comp[::2]])
+        out = intl([comp, clean], decimate, [0])
         offs = 3 if decimate else 2
 
         return out[invpos // offs:]
-
-    def bb(idx: int, cut: bool = False) -> vs.VideoNode:
-        if cut:
-            return bob_clip[cycle:].std.SelectEvery(cycle, [idx])
-        return bob_clip.std.SelectEvery(cycle, [idx])
 
     # 30i credits
     if pattern == 0:
@@ -160,4 +155,4 @@ def pulldown_credits(
     fix1 = MVTools(c1, **mv_args).flow_interpolate(time=50 + direction * 25)
     fix2 = MVTools(c2, **mv_args).flow_interpolate()
 
-    return core.std.Interleave([fix1[::2], fix2[::2]] if pattern == 0 else [fix2[::2], fix1[::2]])
+    return intl([fix1, fix2], pattern == 0, [0, 1])
