@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import warnings
-
 from stgpytools import KwargsT
 from vsdenoise import MVTools
 from vstools import FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core, vs
@@ -18,16 +16,13 @@ def pulldown_credits(
     """
     Deinterlacing function for interlaced credits (60i/30p) on top of telecined video (24p).
 
-    This is a combination of havsfunc's dec_txt60mc, ivtc_txt30mc, and ivtc_txt60mc functions.
     The credits are interpolated and decimated to match the output clip.
 
     The function assumes you're passing a telecined clip (that's native 24p).
-    If your clip is already fieldmatched, decimation will automatically be enabled unless set it to False.
-    Likewise, if your credits are 30p (as opposed to 60i), you should set `interlaced` to False.
+    If your credits are 30p (as opposed to 60i), you should set `interlaced` to False.
 
     The recommended way to use this filter is to trim out the area with interlaced credits,
     apply this function, and `vstools.insert_clip` the clip back into a properly IVTC'd clip.
-    Alternatively, use `muvsfunc.VFRSplice` to splice the clip back in if you're dealing with a VFR clip.
 
     :param clip:                    Clip to process. Framerate must be 30000/1001.
     :param bob_clip:                Custom bobbed clip. Framerate must be 60000/1001.
