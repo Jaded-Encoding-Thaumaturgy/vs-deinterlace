@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Any
+
 from stgpytools import KwargsT
 from vsdenoise import MVTools
-from vstools import FieldBased, FieldBasedT, InvalidFramerateError, check_variable, core, vs
+from vstools import InvalidFramerateError, check_variable, core, vs
 
 __all__ = [
     'pulldown_credits'
@@ -10,8 +12,8 @@ __all__ = [
 
 
 def pulldown_credits(
-    bobbed_clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
-    interlaced: bool = True, decimate: bool = False, mv_args: KwargsT | None = None
+    bobbed_clip: vs.VideoNode, frame_ref: int, interlaced: bool = True, decimate: bool = False,
+    **mv_args: Any
 ) -> vs.VideoNode:
     """
     Deinterlacing function for interlaced credits (60i/30p) on top of telecined video (24p).
@@ -52,7 +54,7 @@ def pulldown_credits(
     pattern = [0, 1, 0, 0, 1][frame_ref]
     direction = [-1, -1, 1, 1, 1][frame_ref]
 
-    mv_args = KwargsT(range_conversion=1.0, pel=2, refine=0) | (mv_args or KwargsT())
+    mv_args = KwargsT(range_conversion=1.0, pel=2, refine=0) | mv_args
 
     ivtc_fps, ivtc_fps_div = (dict(fpsnum=x, fpsden=1001) for x in (24000, 12000))
 
