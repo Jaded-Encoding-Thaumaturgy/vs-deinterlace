@@ -10,7 +10,7 @@ __all__ = [
 
 
 def pulldown_credits(
-    clip: vs.VideoNode, bob_clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
+    bobbed_clip: vs.VideoNode, frame_ref: int, tff: bool | FieldBasedT | None = None,
     interlaced: bool = True, decimate: bool = False, mv_args: KwargsT | None = None
 ) -> vs.VideoNode:
     """
@@ -24,8 +24,7 @@ def pulldown_credits(
     The recommended way to use this filter is to trim out the area with interlaced credits,
     apply this function, and `vstools.insert_clip` the clip back into a properly IVTC'd clip.
 
-    :param clip:                    Clip to process. Framerate must be 30000/1001.
-    :param bob_clip:                Custom bobbed clip. Framerate must be 60000/1001.
+    :param bobbed_clip:             Bobbed clip. Framerate must be 60000/1001.
     :param frame_ref:               First frame in the pattern. Expected pattern is ABBCD,
                                     except for when ``decimate`` is enabled, in which case it's AABCD.
     :param tff:                     Top-field-first. `False` sets it to Bottom-Field-First.
@@ -41,13 +40,9 @@ def pulldown_credits(
     :raises InvalidFramerateError:  Bobbed clip does not have a framerate of 60000/1001 (59.94)
     """
 
-    assert check_variable(clip, pulldown_credits)
+    assert check_variable(bobbed_clip, pulldown_credits)
 
-    InvalidFramerateError.check(pulldown_credits, clip, (30000, 1001))
-    InvalidFramerateError.check(pulldown_credits, bob_clip, (60000, 1001))
-
-    tff = FieldBased.from_param_or_video(tff, clip, True, pulldown_credits)
-    clip = FieldBased.ensure_presence(clip, tff)
+    InvalidFramerateError.check(pulldown_credits, bobbed_clip, (60000, 1001))
 
     field_ref = frame_ref * 2
     frame_ref %= 5
@@ -68,8 +63,8 @@ def pulldown_credits(
 
     def bb(idx: int, cut: bool = False) -> vs.VideoNode:
         if cut:
-            return bob_clip[cycle:].std.SelectEvery(cycle, [idx])
-        return bob_clip.std.SelectEvery(cycle, [idx])
+            return bobbed_clip[cycle:].std.SelectEvery(cycle, [idx])
+        return bobbed_clip.std.SelectEvery(cycle, [idx])
 
     def intl(clips: list[vs.VideoNode], toreverse: bool, halv: list[int]) -> vs.VideoNode:
         clips = [c[::2] if i in halv else c for i, c in enumerate(clips)]
@@ -101,12 +96,12 @@ def pulldown_credits(
                 pos = [4, 8]
                 assumefps = 1
 
-        clean = bob_clip.std.SelectEvery(cycle, [cleanpos - invpos])
-        jitter = bob_clip.std.SelectEvery(cycle, [p - invpos for p in pos])
+        clean = bobbed_clip.std.SelectEvery(cycle, [cleanpos - invpos])
+        jitter = bobbed_clip.std.SelectEvery(cycle, [p - invpos for p in pos])
 
         if assumefps:
             jitter = core.std.AssumeFPS(
-                bob_clip[0] * assumefps + jitter, **(ivtc_fps_div if cleanpos == 6 else ivtc_fps)
+                bobbed_clip[0] * assumefps + jitter, **(ivtc_fps_div if cleanpos == 6 else ivtc_fps)
             )
 
         comp = MVTools(jitter, **mv_args).flow_interpolate()
@@ -139,13 +134,13 @@ def pulldown_credits(
             c2pos = [1, 6, 5, 10]
 
     if c1pos:
-        c1 = bob_clip.std.SelectEvery(cycle, [c + offset for c in c1pos])
+        c1 = bobbed_clip.std.SelectEvery(cycle, [c + offset for c in c1pos])
 
     if c2pos:
-        c2 = bob_clip.std.SelectEvery(cycle, [c + offset for c in c2pos])
+        c2 = bobbed_clip.std.SelectEvery(cycle, [c + offset for c in c2pos])
 
     if offset == -1:
-        c1, c2 = (core.std.AssumeFPS(bob_clip[0] + c, **ivtc_fps) for c in (c1, c2))
+        c1, c2 = (core.std.AssumeFPS(bobbed_clip[0] + c, **ivtc_fps) for c in (c1, c2))
 
     fix1 = MVTools(c1, **mv_args).flow_interpolate(time=50 + direction * 25)
     fix2 = MVTools(c2, **mv_args).flow_interpolate()
