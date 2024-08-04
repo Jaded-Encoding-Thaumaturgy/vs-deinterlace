@@ -42,8 +42,8 @@ class telop_resample(CustomIntEnum):
         pos = []
         assumefps = 0
 
-        interlaced = self in (telop_resample.VID_24t_TXT_60i, telop_resample.VID_24d_TXT_60i)
-        decimate = self is telop_resample.VID_24d_TXT_60i
+        interlaced = self in (telop_resample.TXT60i_on_24telecined, telop_resample.TXT60i_on_24duped)
+        decimate = self is telop_resample.TXT60i_on_24duped
 
         cycle = 10 // (1 + interlaced)
 
