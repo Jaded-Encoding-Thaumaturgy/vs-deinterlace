@@ -12,9 +12,9 @@ __all__ = [
 
 
 class telop_resample(CustomIntEnum):
-    VID_24t_TXT_60i = 0
-    VID_24d_TXT_60i = 1
-    VID_24t_TXT_30p = 2
+    TXT60i_on_telecined = 0
+    TXT60i_on_duped = 1
+    TXT30p_on_telecined = 2
 
     def __call__(self, bobbed_clip: vs.VideoNode, pattern: int, **mv_args: Any) -> vs.VideoNode:
         """
