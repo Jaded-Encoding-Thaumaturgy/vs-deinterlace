@@ -61,13 +61,21 @@ class FixInterlacedFades(CustomEnum):
             }
         )
 
-        expr_mode = '+ 2 /' if self == self.Average else ('min' if self == self.Darken else 'max')
+        expr_header = 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! AVG@ 0 = x x {color} - '
+        expr_footer = ' AVG@ / * ? {color} +'
+
+        expr_mode, expr_mode_chroma = (
+            ('+ 2 /', '+ 2 /') if self == self.Average else (('min', '<') if self == self.Darken else ('max', '>'))
+        )
 
         fix = norm_expr(
-            props_clip, 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! '
-            'AVG@ 0 = x x {color} - x.ftAvg{i} x.fbAvg{i} '
-            '{expr_mode} AVG@ / * ? {color} +',
-            planes, i=f.norm_planes, expr_mode=expr_mode,
+            props_clip, (
+                # luma
+                expr_header + 'x.ftAvg{i} x.fbAvg{i} {expr_mode}' + expr_footer,
+                # chroma
+                expr_header + 'x.ftAvg{i} abs x.fbAvg{i} abs {expr_mode} x.ftAvg{i} x.fbAvg{i} ?' + expr_footer
+            ),
+            planes, i=f.norm_planes, expr_mode=(expr_mode, expr_mode_chroma),
             color=colors, force_akarin=func,
         )
 
