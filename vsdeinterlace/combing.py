@@ -21,7 +21,7 @@ class FixInterlacedFades(CustomEnum):
 
     def __call__(
         self, clip: vs.VideoNode, colors: float | list[float] | PlanesT = 0.0,
-        planes: PlanesT | FuncExceptT = None, func: FuncExceptT | None = None
+        planes: PlanesT = None, func: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """
         Give a mathematically perfect solution to decombing fades made *after* telecine
