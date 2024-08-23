@@ -15,9 +15,9 @@ __all__ = [
 
 
 class FixInterlacedFades(CustomEnum):
-    Average = object()
-    Darken = object()
-    Brighten = object()
+    Average: FixInterlacedFades = object()  # type: ignore
+    Darken: FixInterlacedFades = object()  # type: ignore
+    Brighten: FixInterlacedFades = object()  # type: ignore
 
     def __call__(
         self, clip: vs.VideoNode, colors: float | list[float] | PlanesT = 0.0,
