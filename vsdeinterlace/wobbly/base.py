@@ -1,8 +1,8 @@
 from functools import partial
 from typing import Sequence
 
-from vstools import (CustomValueError, DependencyNotFoundError, FieldBased,
-                     FieldBasedT, FuncExceptT, VSFunction, core,
+from vstools import (CustomKeyError, CustomValueError, DependencyNotFoundError,
+                     FieldBased, FieldBasedT, FuncExceptT, VSFunction, core,
                      replace_ranges, vs)
 
 from vsdeinterlace.combing import fix_interlaced_fades
@@ -74,32 +74,41 @@ class _WobblyProcessBase:
 
         return fclip.std.FrameEval(partial(_set_props, clip=clip))
 
-    def _deinterlace_orphans_mark(
+    def _deinterlace_orphans(
         self, clip: vs.VideoNode, orphans: Sequence[OrphanField],
         deinterlacing_function: VSFunction = core.resize.Bob,
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """Deinterlace orphaned fields."""
 
-        func = func_except or self._deinterlace_orphans_mark  # noqa
+        func = func_except or self._deinterlace_orphans  # noqa
 
         field_order = FieldBased.from_video(clip)
-
-        b_frames = [o.framenum for o in orphans if o.match == 'b']
-        n_frames = [o.framenum for o in orphans if o.match == 'n']
-        p_frames = [o.framenum for o in orphans if o.match == 'p']
-        u_frames = [o.framenum for o in orphans if o.match == 'u']
 
         # TODO: implement good deinterlacing aimed at orphan fields.
         # TODO: Try to be smart and freezeframe frames instead if they're literally identical to prev/next frame.
         # TODO: Figure out what to actually pass here for custom deinterlacing functions.
-        deint_np = deinterlacing_function(clip, tff=field_order.is_tff)[not field_order.is_tff::2]  # type:ignore
+        deint_np = deinterlacing_function(clip, tff=not field_order.is_tff)[field_order.is_tff::2]  # type:ignore
         deint_bu = deinterlacing_function(clip, tff=field_order.is_tff)[field_order.is_tff::2]  # type:ignore
 
-        out_clip = replace_ranges(clip, deint_bu.std.SetFrameProps(wobbly_orphan_deinterlace='b'), b_frames)
-        out_clip = replace_ranges(out_clip, deint_np.std.SetFrameProps(wobbly_orphan_deinterlace='n'), n_frames)
-        out_clip = replace_ranges(out_clip, deint_np.std.SetFrameProps(wobbly_orphan_deinterlace='p'), p_frames)
-        out_clip = replace_ranges(out_clip, deint_bu.std.SetFrameProps(wobbly_orphan_deinterlace='u'), u_frames)
+        frames_by_match: dict[str, list[int]] = {
+            k.__args__[0]: [] for k in Match.__args__ if k.__args__[0] != 'c'  # type:ignore
+        }
+
+        try:
+            for o in orphans:
+                frames_by_match[o.match].append(o.framenum)
+        except KeyError:
+            raise CustomKeyError("Invalid orphan match!", func)
+
+        out_clip = replace_ranges(clip, deint_np, frames_by_match['n'] + frames_by_match['p'])
+        out_clip = replace_ranges(out_clip, deint_bu, frames_by_match['b'] + frames_by_match['u'])
+
+        # TODO: Put the match in the frame props.
+        out_clip = replace_ranges(
+            out_clip, out_clip.std.SetFrameProps(wobbly_orphan_deinterlace=True),
+            [f for frames in frames_by_match.values() for f in frames]
+        )
 
         return out_clip
 

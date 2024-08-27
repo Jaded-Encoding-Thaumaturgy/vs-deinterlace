@@ -198,7 +198,7 @@ class WobblyParsed(_WobblyProcessBase):
             wclip = self._apply_interlaced_fades(wclip, self.interlaced_fades, func.func)
 
         if orphan_proc:
-            wclip = self._deinterlace_orphans_mark(wclip, orphan_proc, orphan_deinterlacing_function, func.func)
+            wclip = self._deinterlace_orphans(wclip, orphan_proc, orphan_deinterlacing_function, func.func)
 
         if self.combed_frames:
             wclip = self._apply_combed_markers(wclip, self.combed_frames)
