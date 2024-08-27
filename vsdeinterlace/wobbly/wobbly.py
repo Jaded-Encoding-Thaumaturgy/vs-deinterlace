@@ -10,7 +10,7 @@ from vstools import (MISSING, CustomIndexError, CustomNotImplementedError,
                      CustomTypeError, CustomValueError, FieldBased,
                      FieldBasedT, FileNotExistsError, FuncExceptT,
                      FunctionUtil, Keyframes, SPath, SPathLike, Timecodes,
-                     UnsupportedFieldBasedError, vs)
+                     UnsupportedFieldBasedError, VSFunction, core, vs)
 
 from .base import _WobblyProcessBase
 from .exceptions import InvalidCycleError, InvalidMatchError
@@ -82,26 +82,26 @@ class WobblyParsed(_WobblyProcessBase):
 
         self._func = func_except or WobblyParsed
 
-        wob_file = self.__check_wob_path(file_path)
+        wob_file = self._check_wob_path(file_path)
 
         with wob_file.open('r') as f:
             self._wob_data: dict[str, Any] = dict(json.load(f))
 
         self.work_clip = WobblyVideo(
-            self.__get_val("input file"),
-            self.__get_val("source filter"),
-            self.__get_val("trim", []),
-            Fraction(*self.__get_val("input frame rate", [30000, 1001]))
+            self._get_val("input file"),
+            self._get_val("source filter"),
+            self._get_val("trim", []),
+            Fraction(*self._get_val("input frame rate", [30000, 1001]))
         )
 
         self.meta = WobblyMeta(
-            self.__get_val("wobbly version", -1),
-            self.__get_val("project format version", -1),
-            self.__get_val("generated with", None)
+            self._get_val("wobbly version", -1),
+            self._get_val("project format version", -1),
+            self._get_val("generated with", None)
         )
 
-        self.vfm_params = VfmParams(**dict(self.__get_val("vfm parameters", {})))
-        self.vdecimate_params = VDecParams(**dict(self.__get_val("vdecimate parameters", {})))
+        self.vfm_params = VfmParams(**dict(self._get_val("vfm parameters", {})))
+        self.vdecimate_params = VDecParams(**dict(self._get_val("vdecimate parameters", {})))
 
         if self.vdecimate_params.cycle != 5:
             raise InvalidCycleError("Wobbly currently only supports a cycle of 5 frames!", self._func)
@@ -111,26 +111,27 @@ class WobblyParsed(_WobblyProcessBase):
         if not self.field_order.is_inter:
             raise UnsupportedFieldBasedError("Your source may not be PROGRESSIVE!", self._func)
 
-        self.matches = self.__get_val("matches", [])
-        self.combed_frames = self.__get_val("combed frames", set())
-        self.decimations = self.__get_val("decimated frames", set())
+        self.matches = self._get_val("matches", [])
+        self.combed_frames = self._get_val("combed frames", set())
+        self.decimations = self._get_val("decimated frames", set())
 
         if not bool(len(illegal_chars := set(self.matches) - {*Match.__args__})):  # type:ignore[attr-defined]
             raise InvalidMatchError(f"Illegal characters found in matches: {tuple(illegal_chars)}", self._func)
 
-        self.__set_sections()
-        self.__set_interlaced_fades()
-        self.__set_freeze_frames()
-        self.__set_orphan_frames()
+        self._set_sections()
+        self._set_interlaced_fades()
+        self._set_freeze_frames()
+        self._set_orphan_frames()
 
         # Further sanitizing where necessary.
-        self.__remove_ifades_from_combed()
+        self._remove_ifades_from_combed()
 
     def apply(
         self,
         clip: vs.VideoNode | None = None,
         tff: FieldBasedT | None = None,
         orphan_handling: bool | OrphanMatch | Sequence[OrphanMatch] = False,
+        orphan_deinterlacing_function: VSFunction = core.resize.Bob,
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """
@@ -162,25 +163,25 @@ class WobblyParsed(_WobblyProcessBase):
 
         wclip = FieldBased.from_param(tff or self.field_order, self.apply).apply(func.work_clip)
 
-        orphan_proc = self.__get_orphans_to_process(orphan_handling, func.func)
+        orphan_proc = self._get_orphans_to_process(orphan_handling, func.func)
 
-        if matches_to_proc := self.__force_c_match(self.matches, orphan_proc):  # type:ignore[arg-type]
-            wclip = self.__apply_fieldmatches(wclip, matches_to_proc, func.func)
+        if matches_to_proc := self._force_c_match(self.matches, orphan_proc):  # type:ignore[arg-type]
+            wclip = self._apply_fieldmatches(wclip, matches_to_proc, func.func)
 
         if self.freeze_frames:
-            wclip = self.__apply_freezeframes(wclip, self.freeze_frames, func.func)
+            wclip = self._apply_freezeframes(wclip, self.freeze_frames, func.func)
 
         if self.decimations:
-            wclip = self.__mark_framerates(wclip)
+            wclip = self._mark_framerates(wclip)
 
         if self.interlaced_fades:
-            wclip = self.__apply_interlaced_fades(wclip, self.interlaced_fades, func.func)
+            wclip = self._apply_interlaced_fades(wclip, self.interlaced_fades, func.func)
 
         if orphan_proc:
-            wclip = self.__deinterlace_orphans(wclip, orphan_proc, func.func)
+            wclip = self._deinterlace_orphans_mark(wclip, orphan_proc, orphan_deinterlacing_function, func.func)
 
         if self.combed_frames:
-            wclip = self.__apply_combed_markers(wclip, self.combed_frames)
+            wclip = self._apply_combed_markers(wclip, self.combed_frames)
 
         if self.decimations:
             wclip = wclip.std.DeleteFrames(list(self.decimations))
@@ -189,7 +190,12 @@ class WobblyParsed(_WobblyProcessBase):
 
         return func.return_clip(wclip)
 
-    def __check_wob_path(self, file_path: SPathLike) -> SPath:
+    def remove_sections(self) -> None:
+        """Remove all sections from the wobbly data except for the first one."""
+
+        self.sections = {next(iter(self.sections))}
+
+    def _check_wob_path(self, file_path: SPathLike) -> SPath:
         """Check the wob file path and return an SPath object."""
 
         wob_file = SPath(file_path)
@@ -202,7 +208,7 @@ class WobblyParsed(_WobblyProcessBase):
 
         return wob_file
 
-    def __get_val(self, key: str, fallback: Any = MISSING) -> Any:
+    def _get_val(self, key: str, fallback: Any = MISSING) -> Any:
         """Get a value from the wobbly data dictionary."""
 
         if (val := self._wob_data.get(key, fallback)) is MISSING:
@@ -210,7 +216,7 @@ class WobblyParsed(_WobblyProcessBase):
 
         return val
 
-    def __force_c_match(
+    def _force_c_match(
         self, matches: list[str], frames: list[int | _HoldsFrameNum | _HoldsStartEndFrames]
     ) -> list[Match]:
         """Force a 'c' match for a given list of frames."""
@@ -229,10 +235,10 @@ class WobblyParsed(_WobblyProcessBase):
 
         return matches  # type:ignore[return-value]
 
-    def __set_sections(self) -> None:
+    def _set_sections(self) -> None:
         """Set the sections attribute."""
 
-        sections_data: list[dict[str, Any]] = self.__get_val("sections", [{}])
+        sections_data: list[dict[str, Any]] = self._get_val("sections", [{}])
 
         self.sections = {
             Section(
@@ -243,10 +249,10 @@ class WobblyParsed(_WobblyProcessBase):
             for i, section in enumerate(sections_data)
         }
 
-    def __set_interlaced_fades(self) -> None:
+    def _set_interlaced_fades(self) -> None:
         """Set the interlaced fades attribute."""
 
-        ifades_data: list[dict[str, int | float]] = self.__get_val("interlaced fades", [{}])
+        ifades_data: list[dict[str, int | float]] = self._get_val("interlaced fades", [{}])
 
         self.interlaced_fades = {
             InterlacedFade(
@@ -256,15 +262,15 @@ class WobblyParsed(_WobblyProcessBase):
             for ifade in ifades_data
         }
 
-    def __set_freeze_frames(self) -> None:
+    def _set_freeze_frames(self) -> None:
         """Set the freeze frames attribute."""
 
         self.freeze_frames = {
             FreezeFrame(*tuple(freezes[0]))
-            for freezes in zip(self.__get_val("frozen frames", ()))
+            for freezes in zip(self._get_val("frozen frames", ()))
         }
 
-    def __set_orphan_frames(self) -> None:
+    def _set_orphan_frames(self) -> None:
         """Set the orphan frames attribute."""
 
         try:
@@ -286,13 +292,13 @@ class WobblyParsed(_WobblyProcessBase):
         except IndexError as e:
             raise CustomIndexError(" ".join([str(e), f"(frame: {frame_num})"]), self._func)
 
-    def __remove_ifades_from_combed(self) -> None:
+    def _remove_ifades_from_combed(self) -> None:
         """Remove interlaced fades from the combed frames attribute."""
 
         if self.interlaced_fades:
             self.combed_frames = set(self.combed_frames) - set(i.framenum for i in self.interlaced_fades)
 
-    def __get_orphans_to_process(
+    def _get_orphans_to_process(
         self, process: bool | OrphanMatch | Sequence[OrphanMatch] = False,
         func_except: FuncExceptT | None = None
     ) -> Sequence[OrphanField]:
@@ -331,7 +337,7 @@ class WobblyParsed(_WobblyProcessBase):
 
         return [orphan for orphan in self.orphan_frames if orphan.match in matches_check]
 
-    def __mark_framerates(self, clip: vs.VideoNode) -> vs.VideoNode:
+    def _mark_framerates(self, clip: vs.VideoNode) -> vs.VideoNode:
         """Mark the framerates per cycle."""
 
         framerates = [

@@ -1,7 +1,7 @@
 from typing import Sequence
 
-from vstools import (CustomValueError, DependencyNotFoundError, FuncExceptT,
-                     core, replace_ranges, vs)
+from vstools import (CustomValueError, DependencyNotFoundError, FieldBased,
+                     FuncExceptT, VSFunction, core, replace_ranges, vs)
 
 from vsdeinterlace.combing import fix_interlaced_fades
 
@@ -22,7 +22,7 @@ class _WobblyProcessBase:
                 f"Could not find the \"{plugin}\" plugin. Please install it!", func  # type: ignore[arg-type]
             )
 
-    def __apply_fieldmatches(
+    def _apply_fieldmatches(
         self, clip: vs.VideoNode, matches: Sequence[Match],
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
@@ -37,7 +37,7 @@ class _WobblyProcessBase:
 
         return clip.std.FrameEval(lambda n: match_clips.get(matches[n]))
 
-    def __apply_freezeframes(
+    def _apply_freezeframes(
         self, clip: vs.VideoNode, freezes: set[FreezeFrame],
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
@@ -62,19 +62,22 @@ class _WobblyProcessBase:
         try:
             fclip = clip.std.FreezeFrames(start_frames, end_frames, replacements)
         except vs.Error as e:
-            raise CustomValueError("Could not freeze frames!", func_except or self.__apply_freezeframes) from e
+            raise CustomValueError("Could not freeze frames!", func_except or self._apply_freezeframes) from e
 
         return fclip.std.FrameEval(
             lambda n, clip: clip.std.SetFrameProps(freeze_props[n]) if n in freeze_props else clip
         )
 
-    def __deinterlace_orphans(
+    def _deinterlace_orphans_mark(
         self, clip: vs.VideoNode, orphans: Sequence[OrphanField],
+        deinterlacing_function: VSFunction = core.resize.Bob,
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """Deinterlace orphaned fields."""
 
-        func = func_except or self.__deinterlace_orphans  # noqa
+        func = func_except or self._deinterlace_orphans_mark  # noqa
+
+        field_order = FieldBased.from_video(clip)
 
         b_frames = [o.framenum for o in orphans if o.match == 'b']
         n_frames = [o.framenum for o in orphans if o.match == 'n']
@@ -83,16 +86,18 @@ class _WobblyProcessBase:
 
         # TODO: implement good deinterlacing aimed at orphan fields.
         # TODO: Try to be smart and freezeframe frames instead if they're literally identical to prev/next frame.
-        deint_clip = clip
+        # TODO: Figure out what to actually pass here for custom deinterlacing functions.
+        deint_np = deinterlacing_function(clip, tff=field_order.is_tff)[not field_order.is_tff::2]  # type:ignore
+        deint_bu = deinterlacing_function(clip, tff=field_order.is_tff)[field_order.is_tff::2]  # type:ignore
 
-        out_clip = replace_ranges(deint_clip, deint_clip.std.SetFrameProps(wobbly_orphan_deinterlace='b'), b_frames)
-        out_clip = replace_ranges(out_clip, out_clip.std.SetFrameProps(wobbly_orphan_deinterlace='n'), n_frames)
-        out_clip = replace_ranges(out_clip, out_clip.std.SetFrameProps(wobbly_orphan_deinterlace='p'), p_frames)
-        out_clip = replace_ranges(out_clip, out_clip.std.SetFrameProps(wobbly_orphan_deinterlace='u'), u_frames)
+        out_clip = replace_ranges(clip, deint_bu.std.SetFrameProps(wobbly_orphan_deinterlace='b'), b_frames)
+        out_clip = replace_ranges(out_clip, deint_np.std.SetFrameProps(wobbly_orphan_deinterlace='n'), n_frames)
+        out_clip = replace_ranges(out_clip, deint_np.std.SetFrameProps(wobbly_orphan_deinterlace='p'), p_frames)
+        out_clip = replace_ranges(out_clip, deint_bu.std.SetFrameProps(wobbly_orphan_deinterlace='u'), u_frames)
 
         return out_clip
 
-    def __apply_combed_markers(self, clip: vs.VideoNode, combed_frames: set[int]) -> vs.VideoNode:
+    def _apply_combed_markers(self, clip: vs.VideoNode, combed_frames: set[int]) -> vs.VideoNode:
         """Apply combed markers to a clip."""
 
         return replace_ranges(
@@ -101,13 +106,13 @@ class _WobblyProcessBase:
             list(combed_frames)
         )
 
-    def __apply_interlaced_fades(
+    def _apply_interlaced_fades(
         self, clip: vs.VideoNode, ifades: set[InterlacedFade],
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         # TODO: Figure out how to get the right `color` param per frame with an eval.
 
-        func = func_except or self.__apply_interlaced_fades
+        func = func_except or self._apply_interlaced_fades
 
         return replace_ranges(
             clip.std.SetFrameProps(wobbly_fif=False),
