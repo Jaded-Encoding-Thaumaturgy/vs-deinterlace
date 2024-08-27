@@ -38,7 +38,7 @@ class _WobblyProcessBase:
         return clip.std.FrameEval(lambda n: match_clips.get(matches[n]))
 
     def __apply_freezeframes(
-        self, clip: vs.VideoNode, freezes: set[FreezeFrame] = [],
+        self, clip: vs.VideoNode, freezes: set[FreezeFrame],
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """Apply freezeframes to a clip."""
@@ -69,7 +69,7 @@ class _WobblyProcessBase:
         )
 
     def __deinterlace_orphans(
-        self, clip: vs.VideoNode, orphans: Sequence[OrphanField] = [],
+        self, clip: vs.VideoNode, orphans: Sequence[OrphanField],
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """Deinterlace orphaned fields."""
@@ -98,11 +98,11 @@ class _WobblyProcessBase:
         return replace_ranges(
             clip.std.SetFrameProps(wobbly_combed=0),
             clip.std.SetFrameProps(wobbly_combed=1),
-            combed_frames
+            list(combed_frames)
         )
 
     def __apply_interlaced_fades(
-        self, clip: vs.VideoNode, ifades: set[InterlacedFade] = [],
+        self, clip: vs.VideoNode, ifades: set[InterlacedFade],
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         # TODO: Figure out how to get the right `color` param per frame with an eval.

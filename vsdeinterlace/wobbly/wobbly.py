@@ -87,7 +87,7 @@ class WobblyParsed(_WobblyProcessBase):
         with wob_file.open('r') as f:
             self._wob_data: dict[str, Any] = dict(json.load(f))
 
-        self.work_clip = WobblyVideo(  # type:ignore[call-arg]
+        self.work_clip = WobblyVideo(
             self.__get_val("input file"),
             self.__get_val("source filter"),
             self.__get_val("trim", []),
@@ -319,7 +319,7 @@ class WobblyParsed(_WobblyProcessBase):
         if isinstance(process, bool):
             matches_check = orphan_matches
         elif any(m in ('b', 'n', 'p', 'u') for m in list(process)):
-            matches_check = list(process)  # type:ignore[list-item]
+            matches_check = list(process)
         else:
             raise CustomTypeError(
                 "Expected type (bool | OrphanMatch | Sequence[OrphanMatch]), "
@@ -371,7 +371,7 @@ class WobblyParsed(_WobblyProcessBase):
         # TODO: Create a keyframes property that takes decimation into account.
         return Keyframes([i.start_frame for i in self.sections])
 
-    #! TODO: Calculate the timecodes from the information provided, not a clip.
+    # TODO: Calculate the timecodes from the information provided, not a clip.
     @property
     def timecodes(self) -> Timecodes:
         """The timecodes represented as a Timecode object."""

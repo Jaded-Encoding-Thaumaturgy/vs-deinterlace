@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, cast
 
 from vstools import (CustomValueError, FramePropError, FunctionUtil, Keyframes,
                      SPath, SPathLike, clip_async_render, core, get_prop,
                      get_y, normalize_ranges, vs)
 
 from .._metadata import __version__
-from .info import WibblyConfig
+from .info import FrameMetric, WibblyConfig, WibblyConfigSettings
 from .types import Match
 
 __all__ = [
@@ -26,12 +26,13 @@ class Wibbly:
     trims: list[tuple[int | None, int | None]] | None = None
     metrics: list[FrameMetric] = field(default_factory=list[FrameMetric])
 
+    # TODO: refactor
     def _get_clip(self, display: bool = False) -> vs.VideoNode:
         src, out_props = self.clip, list[str]()
 
         func = FunctionUtil(src, Wibbly, None, (vs.YUV, vs.GRAY), 8)
 
-        wclip = func.work_clip
+        wclip = cast(vs.VideoNode, func.work_clip)
 
         if not display:
             norm_trims = normalize_ranges(func.work_clip, self.trims)
@@ -65,14 +66,16 @@ class Wibbly:
             odd_avg = separated[1::2].std.PlaneStats()
 
             if hasattr(core, 'akarin'):
-                wclip = core.akarin.PropExpr(
+                wclip = core.akarin.PropExpr(  # type:ignore
                     [wclip, even_avg, odd_avg],
                     lambda: {'WibblyFieldDiff': 'y.PlaneStatsAverage z.PlaneStatsAverage - abs'}
                 )
             else:
                 def _selector(n: int, f: list[vs.VideoFrame]) -> vs.VideoFrame:
                     f_out = f[0].copy()
-                    f_out.props.WibblyFieldDiff = abs(f[1].props.PlaneStatsAverage - f[2].props.PlaneStatsAverage)
+                    f_out.props.WibblyFieldDiff = abs(
+                        f[1].props.PlaneStatsAverage - f[2].props.PlaneStatsAverage  # type:ignore
+                    )
                     return f_out
 
                 wclip = core.std.ModifyFrame(wclip.std.BlankClip(), [wclip, even_avg, odd_avg], _selector)
@@ -176,8 +179,7 @@ class Wibbly:
                 self.all_matches_to_c
             )
 
-        for metric in self.metrics:
-            metric.match = "c"
+        self.metrics = [metric._replace(match='c') for metric in self.metrics]
 
     def _to_sections(self, scenechanges: list[int]) -> list[dict[str, Any]]:
         if not scenechanges:
@@ -246,7 +248,7 @@ class Wibbly:
     def _process_metrics(
         self, metrics: list[FrameMetric]
     ) -> tuple[
-        list[int], list[int], list[Match], list[int], list[int],
+        list[list[int] | None], list[list[int] | None], list[Match | None], list[int], list[int],
         list[int | None], list[int], list[dict[str, int | float]]
     ]:
         """Process all the metrics."""
@@ -269,12 +271,17 @@ class Wibbly:
             if metric.is_keyframe:
                 scenechanges.append(i)
 
-            if metric.field_diff >= self.config.fade_thr:
-                ifades.append({"frame": i, "field difference": metric.field_diff})
+            if self.config.fade_thr is not None:
+                assert isinstance(metric.field_diff, float), "Field difference must be a float!"
+
+                if metric.field_diff >= self.config.fade_thr:
+                    ifades.append({"frame": i, "field difference": metric.field_diff})
 
         return mics, mmetrics, matches, combed, dec_drop, dec_metrics, scenechanges, ifades
 
-    def _parse_config(self, config: WibblyConfigSettings | None) -> dict[str, Any]:
+    def _parse_config(
+        self, config: WibblyConfigSettings.VMFParams | WibblyConfigSettings.VDECParams | None
+    ) -> dict[str, Any]:
         """Convert the config to a dictionary and handle boolean values."""
 
         return {
@@ -293,7 +300,7 @@ class Wibbly:
 
         return width, height
 
-    def _write_to_file(self, out_path: SPath, data: dict[str, Any]):
+    def _write_to_file(self, out_path: SPath, data: dict[str, Any]) -> None:
         """Write the JSON data to a file."""
 
         out_path.touch(exist_ok=True)
