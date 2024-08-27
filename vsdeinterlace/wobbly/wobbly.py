@@ -12,12 +12,14 @@ from vstools import (MISSING, CustomIndexError, CustomNotImplementedError,
                      FunctionUtil, Keyframes, SPath, SPathLike, Timecodes,
                      UnsupportedFieldBasedError, VSFunction, core, vs)
 
+from vsdeinterlace.wobbly.info import Preset
+
 from .base import _WobblyProcessBase
 from .exceptions import InvalidCycleError, InvalidMatchError
-from .info import (FreezeFrame, InterlacedFade, OrphanField, Section,
-                   VDecParams, VfmParams, WobblyMeta, WobblyVideo,
+from .info import (CustomList, FreezeFrame, InterlacedFade, OrphanField,
+                   Section, VDecParams, VfmParams, WobblyMeta, WobblyVideo,
                    _HoldsFrameNum, _HoldsStartEndFrames)
-from .types import Match, OrphanMatch
+from .types import CustomPostFiltering, Match, OrphanMatch
 
 __all__: list[str] = [
     "WobblyParsed",
@@ -59,7 +61,7 @@ class WobblyParsed(_WobblyProcessBase):
     decimations: set[int] = field(default_factory=set)
     """A set of frames to decimate."""
 
-    sections: set[Section] = field(default_factory=set)
+    sections: list[Section] = field(default_factory=list)
     """A set of Section objects representing the scenes of a video."""
 
     interlaced_fades: set[InterlacedFade] = field(default_factory=set)
@@ -67,6 +69,12 @@ class WobblyParsed(_WobblyProcessBase):
 
     freeze_frames: set[FreezeFrame] = field(default_factory=set)
     """A list of FreezeFrame objects representing ranges to freeze, and which frames to replace them with."""
+
+    presets: set[Preset] = field(default_factory=set)
+    """A set of Presets used in the wobbly file."""
+
+    custom_lists: list[CustomList] = field(default_factory=list)
+    """A set of CustomLists used in the wobbly file."""
 
     def __init__(self, file_path: SPathLike, func_except: FuncExceptT | None = None) -> None:
         """
@@ -122,6 +130,8 @@ class WobblyParsed(_WobblyProcessBase):
         self._set_interlaced_fades()
         self._set_freeze_frames()
         self._set_orphan_frames()
+        self._set_presets()
+        self._set_custom_lists()
 
         # Further sanitizing where necessary.
         self._remove_ifades_from_combed()
@@ -158,6 +168,9 @@ class WobblyParsed(_WobblyProcessBase):
 
         if clip is None:
             clip = self.work_clip.source(func_except)
+        else:
+            clip = self.work_clip.trim(clip)
+            clip = self.work_clip.set_framerate(clip)
 
         func = FunctionUtil(clip, func_except, None, vs.YUV)
 
@@ -165,8 +178,15 @@ class WobblyParsed(_WobblyProcessBase):
 
         orphan_proc = self._get_orphans_to_process(orphan_handling, func.func)
 
-        if matches_to_proc := self._force_c_match(self.matches, orphan_proc):  # type:ignore[arg-type]
-            wclip = self._apply_fieldmatches(wclip, matches_to_proc, func.func)
+        if self.custom_lists:
+            wclip = self._apply_custom_list(wclip, self.custom_lists, CustomPostFiltering.SOURCE)
+
+        if self.matches:
+            matches_to_proc = self._force_c_match(self.matches, orphan_proc)  # type:ignore[arg-type]
+            wclip = self._apply_fieldmatches(wclip, matches_to_proc, self.field_order, func.func)
+
+        if self.custom_lists:
+            wclip = self._apply_custom_list(wclip, self.custom_lists, CustomPostFiltering.FIELD_MATCH)
 
         if self.freeze_frames:
             wclip = self._apply_freezeframes(wclip, self.freeze_frames, func.func)
@@ -186,6 +206,9 @@ class WobblyParsed(_WobblyProcessBase):
         if self.decimations:
             wclip = wclip.std.DeleteFrames(list(self.decimations))
 
+        if self.custom_lists:
+            wclip = self._apply_custom_list(wclip, self.custom_lists, CustomPostFiltering.DECIMATE)
+
         wclip = FieldBased.PROGRESSIVE.apply(wclip)
 
         return func.return_clip(wclip)
@@ -193,7 +216,13 @@ class WobblyParsed(_WobblyProcessBase):
     def remove_sections(self) -> None:
         """Remove all sections from the wobbly data except for the first one."""
 
-        self.sections = {next(iter(self.sections))}
+        self.sections = [self.sections[0]]
+
+    def remove_presets(self) -> None:
+        """Remove all presets from the wobbly data."""
+
+        for section in self.sections:
+            section.presets = []
 
     def _check_wob_path(self, file_path: SPathLike) -> SPath:
         """Check the wob file path and return an SPath object."""
@@ -240,14 +269,14 @@ class WobblyParsed(_WobblyProcessBase):
 
         sections_data: list[dict[str, Any]] = self._get_val("sections", [{}])
 
-        self.sections = {
+        self.sections = [
             Section(
                 section.get("start", 0),
                 sections_data[i + 1].get("start", 0) - 1 if i < len(sections_data) - 1 else len(self.matches) - 1,
                 section.get("presets", [])
             )
             for i, section in enumerate(sections_data)
-        }
+        ]
 
     def _set_interlaced_fades(self) -> None:
         """Set the interlaced fades attribute."""
@@ -273,6 +302,8 @@ class WobblyParsed(_WobblyProcessBase):
     def _set_orphan_frames(self) -> None:
         """Set the orphan frames attribute."""
 
+        self.orphan_frames = set()
+
         try:
             for section in self.sections:
                 frame_num = section.start_frame
@@ -291,6 +322,35 @@ class WobblyParsed(_WobblyProcessBase):
                     self.orphan_frames.add(OrphanField(frame_num, 'u'))
         except IndexError as e:
             raise CustomIndexError(" ".join([str(e), f"(frame: {frame_num})"]), self._func)
+
+    def _set_presets(self) -> None:
+        """Set the presets attribute."""
+
+        preset_data: list[dict[str, str]] = self._get_val("presets", [])
+
+        self.presets = {
+            Preset(
+                preset.get("name", "fallback name"),
+                preset.get("contents", "raise RuntimeError('No contents provided!')"),
+            )
+            for preset in preset_data
+        }
+
+    def _set_custom_lists(self) -> None:
+        """Set the custom lists attribute."""
+
+        custom_list_data: list[dict[str, Any]] = self._get_val("custom lists", [])
+
+        self.custom_lists = [
+            CustomList(
+                custom_list.get("name", "fallback name"),
+                custom_list.get("preset", ""),
+                custom_list.get("position", ""),
+                custom_list.get("frames", []),
+                self.presets
+            )
+            for custom_list in custom_list_data
+        ]
 
     def _remove_ifades_from_combed(self) -> None:
         """Remove interlaced fades from the combed frames attribute."""
@@ -389,6 +449,7 @@ def parse_wobbly(
     wobbly_file: SPathLike,
     clip: vs.VideoNode | None = None,
     tff: FieldBasedT | None = None,
+    orphan_deinterlacing_function: VSFunction = core.resize.Bob,
     orphan_handling: bool | OrphanMatch | Sequence[OrphanMatch] = False,
 ) -> vs.VideoNode:
     """
@@ -401,4 +462,6 @@ def parse_wobbly(
 
     wob_file = SPath(wobbly_file)
 
-    return WobblyParsed(wob_file, parse_wobbly).apply(clip, tff, orphan_handling, parse_wobbly)
+    return WobblyParsed(wob_file, parse_wobbly).apply(
+        clip, tff, orphan_handling, orphan_deinterlacing_function, parse_wobbly
+    )

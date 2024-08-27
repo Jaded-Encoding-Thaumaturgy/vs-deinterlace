@@ -66,7 +66,7 @@ class Wibbly:
             odd_avg = separated[1::2].std.PlaneStats()
 
             if hasattr(core, 'akarin'):
-                wclip = core.akarin.PropExpr(  # type:ignore
+                wclip = core.akarin.PropExpr(
                     [wclip, even_avg, odd_avg],
                     lambda: {'WibblyFieldDiff': 'y.PlaneStatsAverage z.PlaneStatsAverage - abs'}
                 )

@@ -1,12 +1,14 @@
 from typing import Sequence
 
 from vstools import (CustomValueError, DependencyNotFoundError, FieldBased,
-                     FuncExceptT, VSFunction, core, replace_ranges, vs)
+                     FieldBasedT, FuncExceptT, VSFunction, core,
+                     replace_ranges, vs)
 
 from vsdeinterlace.combing import fix_interlaced_fades
+from vsdeinterlace.wobbly.info import CustomList
 
 from .info import FreezeFrame, InterlacedFade, OrphanField
-from .types import Match
+from .types import CustomPostFiltering, Match
 
 
 class _WobblyProcessBase:
@@ -24,16 +26,18 @@ class _WobblyProcessBase:
 
     def _apply_fieldmatches(
         self, clip: vs.VideoNode, matches: Sequence[Match],
+        tff: FieldBasedT | None = None,
         func_except: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """Apply fieldmatches to a clip."""
 
         self._check_plugin_installed('fh', func_except)
 
-        match_clips = dict[str, vs.VideoNode]()
+        tff = FieldBased.from_param_or_video(tff, clip)
 
-        for match in set(matches):
-            match_clips |= {match: clip.std.SetFrameProps(wobbly_match=match)}
+        clip = clip.fh.FieldHint(None, tff, ''.join(matches))
+
+        match_clips = {match: clip.std.SetFrameProps(wobbly_match=match) for match in set(matches)}
 
         return clip.std.FrameEval(lambda n: match_clips.get(matches[n]))
 
@@ -119,3 +123,21 @@ class _WobblyProcessBase:
             fix_interlaced_fades(clip, colors=0, planes=0, func=func).std.SetFrameProps(wobbly_fif=True),
             [f.framenum for f in ifades]
         )
+
+    def _apply_custom_list(
+        self, clip: vs.VideoNode, custom_list: list[CustomList], pos: CustomPostFiltering
+    ) -> vs.VideoNode:
+        """Apply a list of custom functions to a clip based on the pos."""
+
+        for custom in custom_list:
+            if custom.position == pos:
+                custom_clip = custom.preset.apply_preset(clip)
+
+                custom_clip = custom_clip.std.SetFrameProps(
+                    wobbly_custom_list_name=custom.name,
+                    wobbly_custom_list_position=str(pos)
+                )
+
+                clip = replace_ranges(clip, custom_clip, custom.frames)
+
+        return clip

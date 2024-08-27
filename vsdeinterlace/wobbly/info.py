@@ -3,11 +3,12 @@ from fractions import Fraction
 from typing import Any, Callable, NamedTuple
 
 from vstools import (CustomValueError, FieldBased, FieldBasedT,
-                     FileNotExistsError, FrameRangeN, FuncExceptT,
-                     SceneChangeMode, SPath, SPathLike, VSCoreProxy, core, vs)
+                     FileNotExistsError, FrameRangeN, FrameRangesN,
+                     FuncExceptT, SceneChangeMode, SPath, SPathLike,
+                     VSCoreProxy, core, vs)
 
 from .exceptions import InvalidMatchError
-from .types import Match, SectionPreset
+from .types import CustomPostFiltering, Match, SectionPreset
 
 __all__: list[str] = [
     "WobblyMeta", "WobblyVideo",
@@ -79,13 +80,37 @@ class WobblyVideo:
 
         src = self.source_filter(sfile.to_str(), **kwargs)  # type:ignore[operator]
 
-        if src.fps != self.framerate:
-            src = src.std.AssumeFPS(src, self.framerate.numerator, self.framerate.denominator)
+        src = self.set_framerate(src)
+
+        return self.trim(src)
+
+    def set_framerate(self, clip: vs.VideoNode) -> vs.VideoNode:
+        """
+        Set the framerate of a clip to the base framerate.
+
+        :param clip:    The clip to set the framerate of.
+
+        :return:        The clip with the framerate set.
+        """
+
+        if clip.fps != self.framerate:
+            return clip.std.AssumeFPS(clip, self.framerate.numerator, self.framerate.denominator)
+
+        return clip
+
+    def trim(self, clip: vs.VideoNode) -> vs.VideoNode:
+        """
+        Apply trims to a clip.
+
+        :param clip:    The clip to apply the trims to.
+
+        :return:        The trimmed clip.
+        """
 
         if not self.trims:
-            return src
+            return clip
 
-        return core.std.Splice([src.std.Trim(s, e) for s, e in self.trims])
+        return core.std.Splice([clip.std.Trim(s, e) for s, e in self.trims])
 
 
 # TODO: refactor this
@@ -268,7 +293,7 @@ class Section(_HoldsStartEndFrames):
         return (self.start_frame, self.end_frame)
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class FreezeFrame(_HoldsStartEndFrames):
     """Frame ranges to freeze."""
 
@@ -291,7 +316,7 @@ class _HoldsFrameNum:
             raise CustomValueError("Frame number must be greater than or equal to 0!")
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class InterlacedFade(_HoldsFrameNum):
     """Information about interlaced fades."""
 
@@ -307,7 +332,7 @@ class InterlacedFade(_HoldsFrameNum):
         super().__post_init__()
 
 
-@dataclass
+@dataclass(unsafe_hash=True)
 class OrphanField(_HoldsFrameNum):
     """Information about the orphan fields."""
 
@@ -329,3 +354,104 @@ class OrphanField(_HoldsFrameNum):
         """The fieldorder to deinterlace in to properly deinterlace the orphan field."""
 
         return FieldBased.TFF if self.match in ('n', 'p') else FieldBased.BFF
+
+
+@dataclass(unsafe_hash=True)
+class Preset:
+    """A filtering preset."""
+
+    name: str
+    """The section the preset applies to."""
+
+    contents: str
+    """The preset to apply to the section."""
+
+    def __str__(self) -> str:
+        return f"Preset({self.name=}, {self.contents=})"
+
+    def __post_init__(self) -> None:
+        clip = core.std.BlankClip()
+
+        local_namespace = {
+            "clip": clip,
+            "core": core
+        }
+
+        try:
+            exec(self.contents, {}, local_namespace)
+        except Exception as e:
+            raise CustomValueError(
+                f"Invalid preset contents ({self.contents=})! Original error: {e}", Preset
+            ) from e
+
+    def apply_preset(self, clip: vs.VideoNode) -> vs.VideoNode:
+        """
+        Apply the preset to a clip.
+
+        :param clip:    The clip to apply the preset to.
+
+        :return:        The clip with the preset applied.
+        """
+
+        local_namespace = {"clip": clip}
+
+        try:
+            exec(self.contents, {}, local_namespace)
+
+            clip = local_namespace.get("clip", clip)
+        except Exception as e:
+            raise CustomValueError(f"Could not apply preset ({self.contents=})!", self.apply_preset) from e
+
+        return clip
+
+
+@dataclass
+class CustomList:
+    """Custom filtering applied to a given frame range."""
+
+    name: str
+    """The name of the custom list."""
+
+    preset: Preset
+    """The preset used for the custom list."""
+
+    position: CustomPostFiltering
+    """The position to apply the custom filter."""
+
+    frames: FrameRangesN = field(default_factory=lambda: [])
+    """The frame ranges to apply the custom filter to."""
+
+    def __init__(
+        self, name: str,
+        preset: Preset | str,
+        position: CustomPostFiltering | str,
+        frames: list[list[int]] | None = None,
+        presets: set[Preset] = set(),
+    ) -> None:
+        self.name = name
+
+        if not preset:
+            raise CustomValueError("A preset must be set!", CustomList)
+
+        if not position:
+            raise CustomValueError("A position must be set!", CustomList)
+
+        self.position = CustomPostFiltering.from_str(position) if isinstance(position, str) else position
+        self.preset = self._get_preset_from_presets(preset, presets) if isinstance(preset, str) else preset
+
+        self.frames = []
+
+        for frame_range in frames or []:
+            self.frames.append(tuple(frame_range))  # type:ignore
+
+    def __str__(self) -> str:
+        return f"CustomList({self.name=}, {self.preset=}, {self.position=}, {self.frames=})"
+
+    def _get_preset_from_presets(self, name: str, presets: set[Preset]) -> Preset:
+        """Get the preset from the list of presets."""
+
+        for preset in presets:
+            if preset.name == name:
+                return preset
+
+        raise CustomValueError(f"Could not find the preset in the list of presets ({name=})!", CustomList)
