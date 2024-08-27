@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Sequence
 
 from vstools import (CustomValueError, DependencyNotFoundError, FieldBased,
@@ -47,7 +48,7 @@ class _WobblyProcessBase:
     ) -> vs.VideoNode:
         """Apply freezeframes to a clip."""
 
-        start_frames = end_frames = replacements = list[int]()
+        start_frames, end_frames, replacements = list[int](), list[int](), list[int]()
         freeze_props: dict[int, dict[str, int]] = {}
 
         for freeze in freezes:
@@ -68,9 +69,10 @@ class _WobblyProcessBase:
         except vs.Error as e:
             raise CustomValueError("Could not freeze frames!", func_except or self._apply_freezeframes) from e
 
-        return fclip.std.FrameEval(
-            lambda n, clip: clip.std.SetFrameProps(freeze_props[n]) if n in freeze_props else clip
-        )
+        def _set_props(n: int, clip: vs.VideoNode) -> vs.VideoNode:
+            return clip.std.SetFrameProps(**dict(freeze_props[n])) if n in freeze_props else clip
+
+        return fclip.std.FrameEval(partial(_set_props, clip=clip))
 
     def _deinterlace_orphans_mark(
         self, clip: vs.VideoNode, orphans: Sequence[OrphanField],
