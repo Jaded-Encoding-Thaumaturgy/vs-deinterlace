@@ -93,7 +93,7 @@ class WobblyParsed(_WobblyProcessBase):
         wob_file = self._check_wob_path(file_path)
 
         with wob_file.open('r') as f:
-            self._wob_data: dict[str, Any] = dict(json.load(f))
+            self._wob_data = dict[str, Any](json.load(f))
 
         self.work_clip = WobblyVideo(
             self._get_val("input file"),
@@ -206,10 +206,10 @@ class WobblyParsed(_WobblyProcessBase):
         if self.decimations:
             wclip = wclip.std.DeleteFrames(list(self.decimations))
 
+        wclip = FieldBased.PROGRESSIVE.apply(wclip)
+
         if self.custom_lists:
             wclip = self._apply_custom_list(wclip, self.custom_lists, CustomPostFiltering.DECIMATE)
-
-        wclip = FieldBased.PROGRESSIVE.apply(wclip)
 
         return func.return_clip(wclip)
 
