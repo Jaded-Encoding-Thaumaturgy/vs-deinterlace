@@ -2,72 +2,19 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from typing import Any, NamedTuple
+from typing import Any
 
-from vstools import (CustomValueError, FunctionUtil, Keyframes,
-                     SceneChangeMode, SPath, SPathLike, clip_async_render,
-                     core, get_prop, get_y, normalize_ranges, vs, FramePropError)
+from vstools import (CustomValueError, FramePropError, FunctionUtil, Keyframes,
+                     SPath, SPathLike, clip_async_render, core, get_prop,
+                     get_y, normalize_ranges, vs)
 
-from .types import Types
+from .._metadata import __version__
+from .info import WibblyConfig
+from .types import Match
 
 __all__ = [
-    "Config", "WibblyConfig",
     "Wibbly"
 ]
-
-
-class Config:
-    class Crop(NamedTuple):
-        left: int = 0
-        top: int = 0
-        right: int = 0
-        bottom: int = 0
-        early: bool = True
-
-    class DMetrics(NamedTuple):
-        nt: int = 10
-
-    class VMFParams(NamedTuple):
-        order: int = 1
-        cthresh: int = 9
-        mi: int = 80
-        blockx: int = 16
-        blocky: int = 16
-        y0: int = 16
-        y1: int = 16
-        micmatch: bool = True
-        scthresh: float = 12.0
-        mchroma: bool = True
-        chroma: bool = True
-
-    class VDECParams(NamedTuple):
-        blockx: int = 32
-        blocky: int = 32
-        dupthresh: float = 1.1
-        scthresh: float = 15.0
-        chroma: bool = True
-
-
-@dataclass
-class WibblyConfig(Config):
-    crop: Config.Crop | None = Config.Crop()
-    dmetrics: Config.DMetrics | None = Config.DMetrics()
-    vfm: Config.VMFParams | None = Config.VMFParams()
-    vdec: Config.VDECParams | None = Config.VDECParams()
-    fade_thr: float | None = 0.4 / 255
-    sc_mode: SceneChangeMode | None = SceneChangeMode.WWXD
-
-
-class FrameMetric(NamedTuple):
-    is_combed: bool
-    is_keyframe: bool
-    match: Types.Match | None
-    vfm_mics: list[int] | None
-    mm_dmet: list[int] | None
-    vm_dmet: list[int] | None
-    dec_met: int | None
-    dec_drop: bool
-    field_diff: float | None
 
 
 @dataclass
@@ -158,9 +105,9 @@ class Wibbly:
     def calculate_metrics(self) -> list[FrameMetric]:
         """Calculate the Wobbly metrics for the given clip with the given configuration."""
 
-        match_chars = list[Types.Match](['p', 'c', 'n', 'b', 'u'])
+        match_chars = list[Match](['p', 'c', 'n', 'b', 'u'])
 
-        def _to_midx(match: int) -> Types.Match:
+        def _to_midx(match: int) -> Match:
             return match_chars[match]
 
         def _callback(n: int, f: vs.VideoFrame) -> FrameMetric:
@@ -199,9 +146,8 @@ class Wibbly:
         Write a file to be used in Wobbly for further processing.
 
         :param video_path:      The path to the video file. This must be present for wobbly to load the video.
-                                If your source was indexed using `vssource.source`,it will automatically
-                                grab the path from the frameprops.
-                                If no path can be found, an error is raised.
+                                If your source was indexed using `vssource.source`, it will automatically
+                                grab the path from the frameprops. If no path can be found, an error is raised.
         :param out_path:        Output location for the Wobbly file. If None, automatically outputs to
                                 the `video_path` with the suffix set to ".wob".
         :param metrics:         A list of FrameMetric objects. Does not need to be passed if you used
@@ -209,34 +155,103 @@ class Wibbly:
 
         :return:                Path to the output Wobbly file.
         """
-        from .._metadata import __version__
+
+        video_path = self._get_video_path(video_path)
+        out_path = self._get_out_path(video_path, out_path)
+
+        if not (metrics := metrics or self.metrics):
+            raise CustomValueError("You must generate metrics before you can write them to a file!", self.to_file)
+
+        out_dict = self._build_wob_json(video_path, metrics)
+        self._write_to_file(out_path, out_dict)
+
+        return out_path
+
+    def all_matches_to_c(self) -> None:
+        """Sets all matches to 'c' matches."""
+
+        if not self.metrics:
+            raise CustomValueError(
+                "You must generate metrics before you can write them to a file!",
+                self.all_matches_to_c
+            )
+
+        for metric in self.metrics:
+            metric.match = "c"
+
+    def _to_sections(self, scenechanges: list[int]) -> list[dict[str, Any]]:
+        if not scenechanges:
+            return [dict(start=0, presets=[])]
+
+        return [dict(start=start, presets=[]) for start in scenechanges]
+
+    def _guess_idx(self, in_file: SPath) -> str:
+        """Guess the idx based on the filename. Set to (mostly) match Wibbly."""
+
+        match in_file.suffix:
+            case ".dgi": return "dgdecodenv.DGSource"
+            case ".d2v": return "d2v.Source"
+            case ".mp4" | ".m4v" | ".mov": return "lsmas.LibavSMASHSource"
+            case _: pass
+
+        return "bs.VideoSource"
+
+    def _get_video_path(self, video_path: SPathLike | None) -> SPath:
+        """Retrieve the video path"""
 
         if video_path is None:
             try:
-                video_path = get_prop(self.clip, "idx_path", bytes).decode()
+                return SPath(get_prop(self.clip, "idx_path", bytes).decode())
             except (FramePropError, TypeError):
                 raise CustomValueError("You must pass a path to the video file!", self.to_file)
+        return SPath(video_path)
 
-        video_path = SPath(video_path)
+    def _get_out_path(self, video_path: SPath, out_path: SPathLike | None) -> SPath:
+        """Determine the output path based on video path and provided out_path."""
 
-        if out_path is None:
-            out_path = video_path.with_suffix(".wob")
+        return SPath(out_path) if out_path else video_path.with_suffix(".wob")
 
-        out_path = SPath(out_path)
+    def _build_wob_json(self, video_path: SPath, metrics: list[FrameMetric]) -> dict[str, Any]:
+        """Build the JSON file to output to a .wob file."""
 
-        metrics = metrics or self.metrics
+        vfm_out = self._parse_config(self.config.vfm)
+        vdec_out = self._parse_config(self.config.vdec)
 
-        if not metrics:
-            raise CustomValueError("You must generate metrics before you can write them to a file!", self.to_file)
+        width, height = self._get_resolution()
 
-        mics = []
-        mmetrics = []
-        matches = []
-        combed = []
-        dec_drop = []
-        dec_metrics = []
-        scenechanges = []
-        i_fades = []
+        mics, mmetrics, matches, combed, dec_drop, dec_metrics, scenechanges, ifades = self._process_metrics(metrics)
+
+        return {
+            "wobbly version": 6,
+            "project format version": 2,
+            "generated with": f"vs-deinterlace v{__version__}",
+            "input file": video_path.as_posix(),
+            "input frame rate": [self.clip.fps.numerator, self.clip.fps.denominator],
+            "input resolution": [width, height],
+            "trim": [[s, e] for s, e in self.trims] if self.trims else [],
+            "vfm parameters": vfm_out,
+            "vdecimate parameters": vdec_out,
+            "mics": mics,
+            "mmetrics": mmetrics,
+            "matches": matches,
+            "original matches": matches,
+            "combed frames": combed,
+            "decimated frames": dec_drop,
+            "decimate metrics": dec_metrics,
+            "sections": self._to_sections(scenechanges),
+            "source filter": self._guess_idx(video_path),
+            "interlaced fades": ifades
+        }
+
+    def _process_metrics(
+        self, metrics: list[FrameMetric]
+    ) -> tuple[
+        list[int], list[int], list[Match], list[int], list[int],
+        list[int | None], list[int], list[dict[str, int | float]]
+    ]:
+        """Process all the metrics."""
+
+        mics, mmetrics, matches, combed, dec_drop, dec_metrics, scenechanges, ifades = [], [], [], [], [], [], [], []
 
         for i, metric in enumerate(metrics):
             mics.append(metric.vfm_mics)
@@ -255,90 +270,33 @@ class Wibbly:
                 scenechanges.append(i)
 
             if metric.field_diff >= self.config.fade_thr:
-                i_fades.append({"frame": i, "field difference": metric.field_diff})
+                ifades.append({"frame": i, "field difference": metric.field_diff})
 
-        width = self.clip.width
-        height = self.clip.height
+        return mics, mmetrics, matches, combed, dec_drop, dec_metrics, scenechanges, ifades
+
+    def _parse_config(self, config: WibblyConfigSettings | None) -> dict[str, Any]:
+        """Convert the config to a dictionary and handle boolean values."""
+
+        return {
+            k: float(v) if isinstance(v, bool) else v
+            for k, v in config._asdict().items()
+        } if config else {}
+
+    def _get_resolution(self) -> tuple[int, int]:
+        """Calculate the resolution and apply cropping."""
+
+        width, height = self.clip.width, self.clip.height
 
         if self.config.crop:
-            width -= self.config.crop.left
-            width -= self.config.crop.right
+            width -= self.config.crop.left + self.config.crop.right
+            height -= self.config.crop.top + self.config.crop.bottom
 
-            height -= self.config.crop.top
-            height -= self.config.crop.bottom
+        return width, height
 
-        vfm_out: dict[str, Any] = {}
-        vdec_out: dict[str, Any] = {}
-
-        if self.config.vfm is not None:
-            for k, v in self.config.vfm._asdict().items():
-                vfm_out |= {k: float(v) if isinstance(v, bool) else v}
-
-        if self.config.vdec is not None:
-            for k, v in self.config.vdec._asdict().items():
-                vdec_out |= {k: float(v) if isinstance(v, bool) else v}
-
-        out_dict = {
-            "wobbly version": 6,
-            "project format version": 2,
-            "generated with": f"vs-deinterlace v{__version__}",  # TODO: get package name directly
-            "input file": video_path.as_posix(),
-            "input frame rate": [self.clip.fps.numerator, self.clip.fps.denominator],
-            "input resolution": [width, height],
-            "trim": [] if not self.trims else [[s, e] for s, e in self.trims],
-            "vfm parameters": vfm_out,
-            "vdecimate parameters": vdec_out,
-            "mics": mics,
-            "mmetrics": mmetrics,
-            "matches": matches,
-            "original matches": matches,
-            "combed frames": combed,
-            "decimated frames": dec_drop,
-            "decimate metrics": dec_metrics,
-            "sections": self._to_sections(scenechanges),
-            "source filter": self._guess_idx(video_path),
-            "interlaced fades": i_fades
-        }
+    def _write_to_file(self, out_path: SPath, data: dict[str, Any]):
+        """Write the JSON data to a file."""
 
         out_path.touch(exist_ok=True)
 
-        with open("test.wob", "w", encoding="utf-8") as f:
-            json.dump(out_dict, f, ensure_ascii=False, indent=4)
-
-        return out_path
-
-    def all_matches_to_c(self) -> None:
-        """Sets all matches to C matches."""
-        if not self.metrics:
-            raise CustomValueError(
-                "You must generate metrics before you can write them to a file!", self.all_matches_to_c
-            )
-
-        new_metrics: list[FrameMetric] = []
-
-        for metric in self.metrics:
-            metric.match = "c"
-            new_metrics.append(metric)
-
-        self.metrics = new_metrics
-
-    def _to_sections(self, scenechanges: list[int]) -> list[dict[str, Any]]:
-        sections: list[dict[str, Any]] = []
-
-        if not scenechanges:
-            return [dict(start=0, presets=[])]
-
-        for start in scenechanges:
-            sections += [dict(start=start, presets=[])]
-
-        return sections
-
-    def _guess_idx(self, in_file: SPath) -> str:
-        """Guess the idx based on the filename. Set to (mostly) match Wibbly."""
-        match in_file.suffix:
-            case ".dgi": return "dgdecodenv.DGSource"
-            case ".d2v": return "d2v.Source"
-            case ".mp4" | ".m4v" | ".mov": return "lsmas.LibavSMASHSource"
-            case _: pass
-
-        return "lsmas.LWLibavSource"
+        with open(out_path, 'w', encoding='utf-8') as f:
+            json.dump(data, f, ensure_ascii=False, indent=4)
