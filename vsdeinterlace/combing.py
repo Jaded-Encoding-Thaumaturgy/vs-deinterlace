@@ -4,9 +4,9 @@ from typing import Any, Sequence, cast
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import BlurMatrix
-from vstools import (
-    ConvMode, CustomEnum, FuncExceptT, FunctionUtil, GenericVSFunction, KwargsT, PlanesT, core, scale_8bit, vs
-)
+from vstools import (ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT,
+                     FunctionUtil, GenericVSFunction, KwargsT, PlanesT, core,
+                     scale_8bit, vs)
 
 __all__ = [
     'fix_interlaced_fades',
@@ -84,8 +84,8 @@ class FixInterlacedFades(CustomEnum):
 
 def vinverse(
     clip: vs.VideoNode,
-    comb_blur: GenericVSFunction | Sequence[int] = [1, 2, 1],
-    contra_blur: GenericVSFunction | Sequence[int] = [1, 4, 6, 4, 1],
+    comb_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
+    contra_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 4, 6, 4, 1],
     contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25,
     thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
@@ -102,23 +102,32 @@ def vinverse(
     :param scl:             Scale factor for vshrpD * vblurD < 0.
     """
 
-    func = FunctionUtil(clip, vinverse, planes, vs.YUV, 32)
+    func = FunctionUtil(clip, vinverse, planes)
 
     def_k = KwargsT(mode=ConvMode.VERTICAL)
 
     kwrg_a, kwrg_b = not callable(comb_blur), not callable(contra_blur)
 
-    if not callable(comb_blur):
-        comb_blur = BlurMatrix(comb_blur)
+    if isinstance(comb_blur, vs.VideoNode):
+        blurred = comb_blur
+    else:
+        if not callable(comb_blur):
+            comb_blur = BlurMatrix(comb_blur)  # type:ignore
 
-    if not callable(contra_blur):
-        contra_blur = BlurMatrix(contra_blur)
+        blurred = comb_blur(func.work_clip, planes=planes, **((def_k | kwargs) if kwrg_a else kwargs))
 
-    blurred = comb_blur(func.work_clip, planes=planes, **((def_k | kwargs) if kwrg_a else kwargs))
-    blurred2 = contra_blur(blurred, planes=planes, **((def_k | kwargs) if kwrg_b else kwargs))
+    if isinstance(contra_blur, vs.VideoNode):
+        blurred2 = contra_blur
+    else:
+        if not callable(contra_blur):
+            contra_blur = BlurMatrix(contra_blur)  # type:ignore
+
+        blurred2 = contra_blur(blurred, planes=planes, **((def_k | kwargs) if kwrg_b else kwargs))
+
+    FormatsMismatchError.check(func.func, func.work_clip, blurred, blurred2)
 
     combed = norm_expr(
-        [func.work_clip, blurred, blurred2],
+        [func.work_clip, blurred, blurred2],  # type:ignore
         'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D2@ abs D2A! '
         'D2@ D1@ xor D2A@ D1A@ < D2@ D1@ ? {scl} * D2A@ D1A@ < D2@ D1@ ? ? y + '
         'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ? ?',
