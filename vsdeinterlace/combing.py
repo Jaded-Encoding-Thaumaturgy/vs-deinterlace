@@ -102,7 +102,7 @@ def vinverse(
     :param scl:             Scale factor for vshrpD * vblurD < 0.
     """
 
-    func = FunctionUtil(clip, vinverse, planes, vs.YUV)
+    func = FunctionUtil(clip, vinverse, planes)
 
     def_k = KwargsT(mode=ConvMode.VERTICAL)
 
