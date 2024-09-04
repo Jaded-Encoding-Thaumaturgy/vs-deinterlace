@@ -113,7 +113,7 @@ def vinverse(
     else:
         if not callable(comb_blur):
             comb_blur = BlurMatrix(comb_blur)
-    
+
         blurred = comb_blur(func.work_clip, planes=planes, **((def_k | kwargs) if kwrg_a else kwargs))
 
     if isinstance(contra_blur, vs.VideoNode):
@@ -121,7 +121,7 @@ def vinverse(
     else:
         if not callable(contra_blur):
             contra_blur = BlurMatrix(contra_blur)
-    
+
         blurred2 = contra_blur(blurred, planes=planes, **((def_k | kwargs) if kwrg_b else kwargs))
 
     combed = norm_expr(
