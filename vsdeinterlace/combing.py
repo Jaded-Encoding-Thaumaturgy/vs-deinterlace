@@ -86,7 +86,8 @@ def vinverse(
     clip: vs.VideoNode,
     comb_blur: GenericVSFunction | Sequence[int] = [1, 2, 1],
     contra_blur: GenericVSFunction | Sequence[int] = [1, 4, 6, 4, 1],
-    contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25, planes: PlanesT = None,
+    contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25,
+    thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
 ) -> vs.VideoNode:
     """
@@ -96,8 +97,9 @@ def vinverse(
     :param comb_blur:       Filter used to remove combing.
     :param contra_blur:     Filter used to calculate contra sharpening.
     :param contra_str:      Strength of contra sharpening.
-    :param amnt:            Change no pixel by more than this in 8bit (default is 255, unrestricted).
-    :param scl:             Scale factor for vshrpD*vblurD < 0.
+    :param amnt:            Change no pixel by more than this in 8bit.
+    :param thr:             Skip processing if abs(clip - comb_blur(clip)) < thr
+    :param scl:             Scale factor for vshrpD * vblurD < 0.
     """
 
     func = FunctionUtil(clip, vinverse, planes, vs.YUV, 32)
@@ -117,10 +119,11 @@ def vinverse(
 
     combed = norm_expr(
         [func.work_clip, blurred, blurred2],
-        'y z - {sstr} * D1! x y - D2! D1@ abs D1A! D2@ abs D2A! '
-        'D1@ D2@ xor D1A@ D2A@ < D1@ D2@ ? {scl} * D1A@ D2A@ < D1@ D2@ ? ? y + '
-        'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ?',
-        planes, sstr=contra_str, amnt=scale_8bit(func.work_clip, amnt), scl=scl,
+        'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D2@ abs D2A! '
+        'D2@ D1@ xor D2A@ D1A@ < D2@ D1@ ? {scl} * D2A@ D1A@ < D2@ D1@ ? ? y + '
+        'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ? ?',
+        planes, sstr=contra_str, amnt=scale_8bit(func.work_clip, amnt),
+        scl=scl, thr=scale_8bit(func.work_clip, thr),
     )
 
     return func.return_clip(combed)
