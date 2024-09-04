@@ -4,9 +4,9 @@ from typing import Any, Sequence, cast
 
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import BlurMatrix
-from vstools import (
-    ConvMode, CustomEnum, FuncExceptT, FunctionUtil, GenericVSFunction, KwargsT, PlanesT, core, scale_8bit, vs
-)
+from vstools import (ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT,
+                     FunctionUtil, GenericVSFunction, KwargsT, PlanesT, core,
+                     scale_8bit, vs)
 
 __all__ = [
     'fix_interlaced_fades',
@@ -112,7 +112,7 @@ def vinverse(
         blurred = comb_blur
     else:
         if not callable(comb_blur):
-            comb_blur = BlurMatrix(comb_blur)
+            comb_blur = BlurMatrix(comb_blur)  # type:ignore
 
         blurred = comb_blur(func.work_clip, planes=planes, **((def_k | kwargs) if kwrg_a else kwargs))
 
@@ -120,12 +120,14 @@ def vinverse(
         blurred2 = contra_blur
     else:
         if not callable(contra_blur):
-            contra_blur = BlurMatrix(contra_blur)
+            contra_blur = BlurMatrix(contra_blur)  # type:ignore
 
         blurred2 = contra_blur(blurred, planes=planes, **((def_k | kwargs) if kwrg_b else kwargs))
 
+    FormatsMismatchError.check(func.func, func.work_clip, blurred, blurred2)
+
     combed = norm_expr(
-        [func.work_clip, blurred, blurred2],
+        [func.work_clip, blurred, blurred2],  # type:ignore
         'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D2@ abs D2A! '
         'D2@ D1@ xor D2A@ D1A@ < D2@ D1@ ? {scl} * D2A@ D1A@ < D2@ D1@ ? ? y + '
         'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ? ?',
