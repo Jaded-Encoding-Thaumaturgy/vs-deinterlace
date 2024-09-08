@@ -18,6 +18,9 @@ class telop_resample(CustomIntEnum):
 
     def __call__(self, bobbed_clip: vs.VideoNode, pattern: int, **mv_args: Any) -> vs.VideoNode:
         """
+        Virtually oversamples the video to 120 fps with motion interpolation on credits only, and decimates to 24 fps.
+        Requires manually specifying the 3:2 pulldown pattern (the clip must be split into parts if it changes).
+
         :param bobbed_clip:             Bobbed clip. Framerate must be 60000/1001.
         :param pattern:                 First frame in the pattern.
         :param mv_args:                 Arguments to pass on to MVTools, used for motion compensation.
