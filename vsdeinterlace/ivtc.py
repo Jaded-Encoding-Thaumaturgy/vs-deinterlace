@@ -161,26 +161,26 @@ def vfm(
     vfm_kwargs = dict[str, Any](
         tff=tff, order=tff.is_tff, field=tff.is_tff, mode=mode,
         mchroma=func.num_planes > 1, chroma=func.num_planes > 1
-    ) | kwargs
+    )
 
     if block := kwargs.pop('block', False):
         if isinstance(block, int):
-            vfm_kwargs | dict(block=(block, block))
+            vfm_kwargs |= dict(block=(block, block))
         else:
-            vfm_kwargs | dict(block=block)
+            vfm_kwargs |= dict(block=block)
 
     if y := kwargs.pop('y', False):
         if isinstance(y, int):
-            vfm_kwargs | dict(y=(y, y))
+            vfm_kwargs |= dict(y=(y, y))
         else:
-            vfm_kwargs | dict(y=y)
+            vfm_kwargs |= dict(y=y)
 
     if clip2 := kwargs.pop('clip2', False):
-        vfm_kwargs | dict(clip2=clip2)
+        vfm_kwargs |= dict(clip2=clip2)
     elif func.work_clip.format is not clip.format:
-        vfm_kwargs = dict(clip2=clip)
+        vfm_kwargs |= dict(clip2=clip)
 
-    fieldmatch = func.work_clip.vivtc.VFM(**vfm_kwargs)
+    fieldmatch = func.work_clip.vivtc.VFM(**(vfm_kwargs | kwargs))
 
     if postprocess:
         if callable(postprocess):
