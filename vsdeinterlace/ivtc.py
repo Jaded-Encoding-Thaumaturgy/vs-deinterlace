@@ -162,19 +162,19 @@ def vfm(
         order=tff.is_tff, field=tff.is_tff, mode=mode
     )
 
-    if block := kwargs.pop('block', False):
+    if block := kwargs.pop('block', None):
         if isinstance(block, int):
-            vfm_kwargs |= dict(block=(block, block))
+            vfm_kwargs |= dict(blockx=block, blocky=block)
         else:
-            vfm_kwargs |= dict(block=block)
+            vfm_kwargs |= dict(blockx=block[0], blocky=block[1])
 
-    if y := kwargs.pop('y', False):
+    if y := kwargs.pop('y', None):
         if isinstance(y, int):
-            vfm_kwargs |= dict(y=(y, y))
+            vfm_kwargs |= dict(y0=y, y1=y)
         else:
-            vfm_kwargs |= dict(y=y)
+            vfm_kwargs |= dict(y0=y[0], y1=y[1])
 
-    if clip2 := kwargs.pop('clip2', False):
+    if clip2 := kwargs.pop('clip2', None):
         vfm_kwargs |= dict(clip2=clip2)
     elif func.work_clip.format is not clip.format:
         vfm_kwargs |= dict(clip2=clip)
@@ -183,7 +183,7 @@ def vfm(
 
     if postprocess:
         if callable(postprocess):
-            postprocess = postprocess(fieldmatch)
+            postprocess = postprocess(clip)
 
         fieldmatch = find_prop_rfs(fieldmatch, postprocess, "_Combed", "==", 1)
 
