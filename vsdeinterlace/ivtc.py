@@ -159,7 +159,7 @@ def vfm(
     tff = FieldBased.from_param_or_video(tff, clip, False, func.func)
 
     vfm_kwargs = dict[str, Any](
-        order=tff.is_tff, field=tff.is_tff, mode=mode
+        order=tff.is_tff, mode=mode
     )
 
     if block := kwargs.pop('block', None):
