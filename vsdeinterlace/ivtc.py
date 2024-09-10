@@ -122,7 +122,7 @@ def vfm(
     if postprocess:
         fieldmatch = find_prop_rfs(fieldmatch, postprocess, prop="_Combed")
     
-    return fieldmatch
+    return func.return_clip(fieldmatch)
 
 
 def vdecimate(
