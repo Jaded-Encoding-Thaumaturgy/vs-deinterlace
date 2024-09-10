@@ -101,7 +101,7 @@ def vfm(
     cthresh: int = 9, mi: int = 80, chroma: bool = True, block: tuple | int = 16, y: tuple | bool = 16,
     scthresh: float | int = 12, micmatch: int = 1, micout: bool = False, postprocess: vs.VideoNode | None = None
 ) -> vs.VideoNode:
-    
+
     func = FunctionUtil(clip, vfm, None, vs.YUV, 8)
 
     if isinstance(block, int):
@@ -115,13 +115,14 @@ def vfm(
         clip2 = None
 
     fieldmatch = func.work_clip.vivtc.VFM(
-        order=tff, field=field, mode=mode, mchroma=mchroma, cthresh=cthresh, mi=mi, chroma=chroma, blockx=block[0], blocky=block[1],
-        y0=y[0], y1=y[1], scthresh=scthresh, micmatch=micmatch, micout=micout, clip2=clip2
+        order=tff, field=field, mode=mode, mchroma=mchroma, cthresh=cthresh, mi=mi, chroma=chroma,
+        blockx=block[0], blocky=block[1], y0=y[0], y1=y[1], scthresh=scthresh, micmatch=micmatch,
+        micout=micout, clip2=clip2
     )
 
     if postprocess:
         fieldmatch = find_prop_rfs(fieldmatch, postprocess, prop="_Combed")
-    
+
     return func.return_clip(fieldmatch)
 
 
@@ -129,7 +130,7 @@ def vdecimate(
     clip: vs.VideoNode, cycle: int = 5, chroma: bool = True, dupthresh: float | int = 1.1, scthresh: float | int = 15,
     block: tuple | int = 32, ovr: str | None = None, dryrun: bool = False, weight: float = 0.0
 ) -> vs.VideoNode:
-    
+
     func = FunctionUtil(clip, vdecimate, None, vs.YUV, (8, 16))
 
     if isinstance(block, int):
