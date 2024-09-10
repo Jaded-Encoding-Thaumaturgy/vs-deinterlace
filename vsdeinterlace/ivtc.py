@@ -119,7 +119,7 @@ def vfm(
         y0=y[0], y1=y[1], scthresh=scthresh, micmatch=micmatch, micout=micout, clip2=clip2
     )
 
-    if not postprocess:
+    if postprocess:
         fieldmatch = find_prop_rfs(fieldmatch, postprocess, prop="_Combed")
     
     return fieldmatch
