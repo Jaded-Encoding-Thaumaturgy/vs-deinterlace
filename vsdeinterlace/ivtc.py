@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from vstools import (
-    CustomEnum, FieldBased, FieldBasedT, InvalidFramerateError,
-    VSFunctionKwArgs, core, join, vs, find_prop_rfs, FunctionUtil
+    CustomEnum, CustomIntEnum, FieldBased, FieldBasedT,
+    FunctionUtil, InvalidFramerateError, VSFunctionKwArgs,
+    VSFunctionNoArgs, core, find_prop_rfs, join, vs
 )
 
 from .blending import deblend
@@ -12,8 +13,40 @@ from .blending import deblend
 __all__ = [
     'IVTCycles',
     'sivtc', 'jivtc',
-    'vfm', 'vdecimate'
+    'vfm', 'VFMMode',
+    'vdecimate'
 ]
+
+
+class VFMMode(CustomIntEnum):
+    """
+    Enum representing different matching modes for VFM.
+
+    The mode determines the strategy used for matching fields and frames.
+    Higher modes generally offer better matching in complex scenarios but
+    may introduce more risk of jerkiness or duplicate frames.
+    """
+
+    TWO_WAY_MATCH = 0
+    """2-way match (p/c). Safest option, but may output combed frames in cases of bad edits or blended fields."""
+
+    TWO_WAY_MATCH_THIRD_COMBED = 1
+    """2-way match + 3rd match on combed (p/c + n). Default mode."""
+
+    TWO_WAY_MATCH_THIRD_SAME_ORDER = 2
+    """2-way match + 3rd match (same order) on combed (p/c + u)."""
+
+    TWO_WAY_MATCH_THIRD_FOURTH_FIFTH = 3
+    """2-way match + 3rd match on combed + 4th/5th matches if still combed (p/c + n + u/b)."""
+
+    THREE_WAY_MATCH = 4
+    """3-way match (p/c/n)."""
+
+    THREE_WAY_MATCH_FOURTH_FIFTH = 5
+    """
+    3-way match + 4th/5th matches on combed (p/c/n + u/b).
+    Highest risk of jerkiness but best at finding good matches.
+    """
 
 
 class IVTCycles(list[int], CustomEnum):
@@ -97,31 +130,63 @@ def jivtc(
 
 
 def vfm(
-    clip: vs.VideoNode, tff: bool | None = None, field: int = 2, mode: int = 1, mchroma: bool = True,
-    cthresh: int = 9, mi: int = 80, chroma: bool = True, block: tuple | int = 16, y: tuple | bool = 16,
-    scthresh: float | int = 12, micmatch: int = 1, micout: bool = False, postprocess: vs.VideoNode | None = None
+    clip: vs.VideoNode, tff: FieldBasedT | None = None,
+    mode: VFMMode = VFMMode.TWO_WAY_MATCH_THIRD_COMBED,
+    postprocess: vs.VideoNode | VSFunctionNoArgs | None = None,
+    **kwargs: Any
 ) -> vs.VideoNode:
+    """
+    Perform inverse telecine using VFM.
 
-    func = FunctionUtil(clip, vfm, None, vs.YUV, 8)
+    This function uses VapourSynth's VFM plugin to detect and match pairs of fields in telecined content.
 
-    if isinstance(block, int):
-        block = (block, block)
-    if isinstance(y, int):
-        y = (y, y)
+    :param clip:            Input clip to perform inverse telecine on.
+    :param tff:             Field order of the input clip.
+                            If None, it will be automatically detected.
+    :param mode:            VFM matching mode. For more information, see :py:class:`VFMMode`.
+                            Default: VFMMode.TWO_WAY_MATCH_THIRD_COMBED.
+    :param postprocess:     Optional function or clip to process combed frames.
+                            If a function is passed, it should take a clip as input and return a clip as output.
+                            If a clip is passed, it will be used as the postprocessed clip.
+    :param kwargs:          Additional keyword arguments to pass to VFM.
+                            For a list of parameters, see the VIVTC documentation.
 
-    if func.work_clip != clip:
-        clip2 = clip
-    else:
-        clip2 = None
+    :return:                Inverse telecined clip with progressive frames.
+    """
 
-    fieldmatch = func.work_clip.vivtc.VFM(
-        order=tff, field=field, mode=mode, mchroma=mchroma, cthresh=cthresh, mi=mi, chroma=chroma,
-        blockx=block[0], blocky=block[1], y0=y[0], y1=y[1], scthresh=scthresh, micmatch=micmatch,
-        micout=micout, clip2=clip2
-    )
+    func = FunctionUtil(clip, vfm, None, (vs.YUV, vs.GRAY), 8)
+
+    tff = FieldBased.from_param_or_video(tff, clip, False, func.func)
+
+    vfm_kwargs = dict[str, Any](
+        tff=tff, order=tff.is_tff, field=tff.is_tff, mode=mode,
+        mchroma=func.num_planes > 1, chroma=func.num_planes > 1
+    ) | kwargs
+
+    if block := kwargs.pop('block', False):
+        if isinstance(block, int):
+            vfm_kwargs | dict(block=(block, block))
+        else:
+            vfm_kwargs | dict(block=block)
+
+    if y := kwargs.pop('y', False):
+        if isinstance(y, int):
+            vfm_kwargs | dict(y=(y, y))
+        else:
+            vfm_kwargs | dict(y=y)
+
+    if clip2 := kwargs.pop('clip2', False):
+        vfm_kwargs | dict(clip2=clip2)
+    elif func.work_clip.format is not clip.format:
+        vfm_kwargs = dict(clip2=clip)
+
+    fieldmatch = func.work_clip.vivtc.VFM(**vfm_kwargs)
 
     if postprocess:
-        fieldmatch = find_prop_rfs(fieldmatch, postprocess, prop="_Combed")
+        if callable(postprocess):
+            postprocess = postprocess(fieldmatch)
+
+        fieldmatch = find_prop_rfs(fieldmatch, postprocess, "_Combed", "==", 1)
 
     return func.return_clip(fieldmatch)
 
