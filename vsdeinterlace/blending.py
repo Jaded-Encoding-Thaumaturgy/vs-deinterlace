@@ -5,7 +5,7 @@ from typing import Any, cast
 from vsexprtools import complexpr_available, expr_func, norm_expr
 from vstools import VSFunction, join, shift_clip, shift_clip_multi, vs
 
-from .combing import vinverse
+from .funcs import vinverse
 from .utils import telecine_patterns
 
 __all__ = [
