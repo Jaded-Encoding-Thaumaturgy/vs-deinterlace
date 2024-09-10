@@ -158,7 +158,7 @@ def vdecimate(
         else:
             decimate_args['dryrun'] = False
             avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
-            func.work_clip = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop")
+            decimate_args['clip2'] = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop")
 
     decimate = func.work_clip.vivtc.VDecimate(**decimate_args)
 
