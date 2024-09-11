@@ -151,7 +151,7 @@ def vfm(
     :param kwargs:          Additional keyword arguments to pass to VFM.
                             For a list of parameters, see the VIVTC documentation.
 
-    :return:                field matched clip with progressive frames.
+    :return:                Field matched clip with progressive frames.
     """
 
     func = FunctionUtil(clip, vfm, None, (vs.YUV, vs.GRAY), 8)
@@ -174,9 +174,7 @@ def vfm(
         else:
             vfm_kwargs |= dict(y0=y[0], y1=y[1])
 
-    if clip2 := kwargs.pop('clip2', None):
-        vfm_kwargs |= dict(clip2=clip2)
-    elif func.work_clip.format is not clip.format:
+    if kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
         vfm_kwargs |= dict(clip2=clip)
 
     fieldmatch = func.work_clip.vivtc.VFM(**(vfm_kwargs | kwargs))
@@ -191,39 +189,39 @@ def vfm(
 
 
 def vdecimate(
-    clip: vs.VideoNode, cycle: int = 5, chroma: bool = True, dupthresh: float | int = 1.1, scthresh: float | int = 15,
-    block: tuple | int = 32, ovr: str | None = None, dryrun: bool = False, weight: float = 0.0
+    clip: vs.VideoNode, weight: float = 0.0,
+    **kwargs: Any
 ) -> vs.VideoNode:
 
     func = FunctionUtil(clip, vdecimate, None, vs.YUV, (8, 16))
 
-    if isinstance(block, int):
-        block = (block, block)
+    if block := kwargs.pop('block', None):
+        if isinstance(block, int):
+            vdecimate_args |= dict(blockx=block, blocky=block)
+        else:
+            vdecimate_args |= dict(blockx=block[0], blocky=block[1])
 
-    if dryrun:
+    if kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
+        vdecimate_args |= dict(clip2=clip)
+
+    if kwargs.get('dryrun', None):
         weight = 0.0
     if weight:
-        dryrun = True
+        vdecimate_args |= dict(dryrun=True)
 
-    if func.work_clip != clip:
-        clip2 = clip
-    else:
-        clip2 = None
-
-    decimate_args = dict(
-        cycle=cycle, chroma=chroma, dupthresh=dupthresh, scthresh=scthresh,
-        blockx=block[0], blocky=block[1], ovr=ovr, dryrun=dryrun, clip2=clip2
-    )
-
-    if dryrun:
-        stats = func.work_clip.vivtc.VDecimate(**decimate_args)
+    if kwargs.get('dryrun', None):
+        stats = func.work_clip.vivtc.VDecimate(**(vdecimate_args | kwargs))
         if not weight:
             return stats
         else:
-            decimate_args['dryrun'] = False
+            del kwargs['dryrun']
             avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
-            decimate_args['clip2'] = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop")
+            splice = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop")
+            if kwargs.get('clip2', None):
+                vdecimate_args |= dict(clip2=splice)
+            else:
+                func.work_clip = splice
 
-    decimate = func.work_clip.vivtc.VDecimate(**decimate_args)
+    decimate = func.work_clip.vivtc.VDecimate(**(vdecimate_args | kwargs))
 
     return func.return_clip(decimate)
