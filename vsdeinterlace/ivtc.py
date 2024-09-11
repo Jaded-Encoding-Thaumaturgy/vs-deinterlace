@@ -193,7 +193,7 @@ def vdecimate(
     **kwargs: Any
 ) -> vs.VideoNode:
 
-    func = FunctionUtil(clip, vdecimate, None, (vs.YUV, vs.GRAY), (8, 16))
+    func = FunctionUtil(clip, vdecimate, None, (vs.YUV, vs.GRAY), range(8, 16))
 
     vdecimate_kwargs = dict[str, Any]()
 
