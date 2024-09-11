@@ -218,7 +218,7 @@ def vdecimate(
         else:
             del vdecimate_kwargs['dryrun']
             avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
-            splice = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop", "==", 1)
+            splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
             if kwargs.get('clip2', None):
                 vdecimate_kwargs |= dict(clip2=splice)
             else:
