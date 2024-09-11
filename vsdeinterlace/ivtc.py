@@ -136,11 +136,11 @@ def vfm(
     **kwargs: Any
 ) -> vs.VideoNode:
     """
-    Perform inverse telecine using VFM.
+    Perform field matching using VFM.
 
     This function uses VapourSynth's VFM plugin to detect and match pairs of fields in telecined content.
 
-    :param clip:            Input clip to perform inverse telecine on.
+    :param clip:            Input clip to field matching telecine on.
     :param tff:             Field order of the input clip.
                             If None, it will be automatically detected.
     :param mode:            VFM matching mode. For more information, see :py:class:`VFMMode`.
@@ -151,7 +151,7 @@ def vfm(
     :param kwargs:          Additional keyword arguments to pass to VFM.
                             For a list of parameters, see the VIVTC documentation.
 
-    :return:                Inverse telecined clip with progressive frames.
+    :return:                field matched clip with progressive frames.
     """
 
     func = FunctionUtil(clip, vfm, None, (vs.YUV, vs.GRAY), 8)
