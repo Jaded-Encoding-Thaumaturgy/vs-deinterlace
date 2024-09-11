@@ -174,7 +174,7 @@ def vfm(
         else:
             vfm_kwargs |= dict(y0=y[0], y1=y[1])
 
-    if kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
+    if not kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
         vfm_kwargs |= dict(clip2=clip)
 
     fieldmatch = func.work_clip.vivtc.VFM(**(vfm_kwargs | kwargs))
@@ -203,13 +203,14 @@ def vdecimate(
         else:
             vdecimate_kwargs |= dict(blockx=block[0], blocky=block[1])
 
-    if kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
+    if not kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
         vdecimate_kwargs |= dict(clip2=clip)
 
     if kwargs.get('dryrun', None):
         weight = 0.0
     if weight:
         vdecimate_kwargs |= dict(dryrun=True)
+        avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
 
     if kwargs.get('dryrun', None):
         stats = func.work_clip.vivtc.VDecimate(**(vdecimate_kwargs | kwargs))
@@ -217,7 +218,6 @@ def vdecimate(
             return stats
         else:
             del vdecimate_kwargs['dryrun']
-            avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
             splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
             if kwargs.get('clip2', None):
                 vdecimate_kwargs |= dict(clip2=splice)
