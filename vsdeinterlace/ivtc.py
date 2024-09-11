@@ -193,7 +193,7 @@ def vdecimate(
     **kwargs: Any
 ) -> vs.VideoNode:
 
-    func = FunctionUtil(clip, vdecimate, None, vs.YUV, (8, 16))
+    func = FunctionUtil(clip, vdecimate, None, (vs.YUV, vs.GRAY), (8, 16))
 
     vdecimate_kwargs = dict[str, Any]()
 
@@ -218,7 +218,7 @@ def vdecimate(
         else:
             del vdecimate_kwargs['dryrun']
             avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
-            splice = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop")
+            splice = find_prop_rfs(clip, avg, ref=stats, prop="VDecimateDrop", "==", 1)
             if kwargs.get('clip2', None):
                 vdecimate_kwargs |= dict(clip2=splice)
             else:
