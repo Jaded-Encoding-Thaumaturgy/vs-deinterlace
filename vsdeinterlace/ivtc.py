@@ -138,7 +138,7 @@ def vfm(
     """
     Perform field matching using VFM.
 
-    This function uses VapourSynth's VFM plugin to detect and match pairs of fields in telecined content.
+    This function uses VIVTC's VFM plugin to detect and match pairs of fields in telecined content.
 
     :param clip:            Input clip to field matching telecine on.
     :param tff:             Field order of the input clip.
@@ -188,10 +188,21 @@ def vfm(
     return func.return_clip(fieldmatch)
 
 
-def vdecimate(
-    clip: vs.VideoNode, weight: float = 0.0,
-    **kwargs: Any
-) -> vs.VideoNode:
+def vdecimate(clip: vs.VideoNode, weight: float = 0.0, **kwargs: Any) -> vs.VideoNode:
+    """
+    Perform frame decimation using VDecimate.
+
+    This function uses VIVTC's VDecimate plugin to remove duplicate frames from telecined content.
+    It's recommended to use the vfm function before running this.
+
+    :param clip:            Input clip to decimate.
+    :param weight:          Weight for frame blending. If > 0, blends frames instead of dropping them.
+                            Default: 0.0 (frames are dropped, not blended).
+    :param kwargs:          Additional keyword arguments to pass to VDecimate.
+                            For a list of parameters, see the VIVTC documentation.
+
+    :return:                Decimated clip with duplicate frames removed or blended.
+    """
 
     func = FunctionUtil(clip, vdecimate, None, (vs.YUV, vs.GRAY), range(8, 16))
 
@@ -208,21 +219,26 @@ def vdecimate(
 
     if kwargs.get('dryrun', None):
         weight = 0.0
+
     if weight:
         vdecimate_kwargs |= dict(dryrun=True)
+
         avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
 
     if kwargs.get('dryrun', None):
         stats = func.work_clip.vivtc.VDecimate(**(vdecimate_kwargs | kwargs))
+
         if not weight:
             return stats
+
+        del vdecimate_kwargs['dryrun']
+
+        splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
+
+        if kwargs.get('clip2', None):
+            vdecimate_kwargs |= dict(clip2=splice)
         else:
-            del vdecimate_kwargs['dryrun']
-            splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
-            if kwargs.get('clip2', None):
-                vdecimate_kwargs |= dict(clip2=splice)
-            else:
-                func.work_clip = splice
+            func.work_clip = splice
 
     decimate = func.work_clip.vivtc.VDecimate(**(vdecimate_kwargs | kwargs))
 
