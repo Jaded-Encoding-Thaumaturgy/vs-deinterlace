@@ -231,7 +231,7 @@ def vdecimate(clip: vs.VideoNode, weight: float = 0.0, **kwargs: Any) -> vs.Vide
         if not weight:
             return stats
 
-        del vdecimate_kwargs['dryrun']
+        vdecimate_kwargs.pop('dryrun', None)
 
         splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
 
