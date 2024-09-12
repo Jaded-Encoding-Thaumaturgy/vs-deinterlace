@@ -231,7 +231,6 @@ def vdecimate(clip: vs.VideoNode, weight: float = 0.0, **kwargs: Any) -> vs.Vide
         splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
         vdecimate_kwargs |= dict(clip2=splice)
 
-
     decimate = func.work_clip.vivtc.VDecimate(**(vdecimate_kwargs | kwargs))
 
     return func.return_clip(decimate)
