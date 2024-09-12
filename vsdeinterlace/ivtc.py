@@ -207,7 +207,7 @@ def vdecimate(clip: vs.VideoNode, weight: float = 0.0, **kwargs: Any) -> vs.Vide
     It's recommended to use the vfm function before running this.
 
     :param clip:            Input clip to decimate.
-    :param weight:          Weight for frame blending. If > 0, blends frames instead of dropping them.
+    :param weight:          Weight for frame blending. If > 0, blends duplicate frames before dropping one.
                             Default: 0.0 (frames are dropped, not blended).
     :param kwargs:          Additional keyword arguments to pass to VDecimate.
                             For a list of parameters, see the VIVTC documentation.
@@ -234,7 +234,7 @@ def vdecimate(clip: vs.VideoNode, weight: float = 0.0, **kwargs: Any) -> vs.Vide
         stats = func.work_clip.vivtc.VDecimate(dryrun=True, **(vdecimate_kwargs | kwargs))
 
         if dryrun:
-            return stats
+            return func.return_clip(stats)
 
         clip = kwargs.pop('clip2', clip)
 
