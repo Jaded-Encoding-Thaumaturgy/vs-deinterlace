@@ -217,28 +217,20 @@ def vdecimate(clip: vs.VideoNode, weight: float = 0.0, **kwargs: Any) -> vs.Vide
     if not kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
         vdecimate_kwargs |= dict(clip2=clip)
 
-    if kwargs.get('dryrun', None):
-        weight = 0.0
+    dryrun = kwargs.pop('dryrun', False)
 
-    if weight:
-        vdecimate_kwargs |= dict(dryrun=True)
+    if dryrun or weight:
+        stats = func.work_clip.vivtc.VDecimate(dryrun=True, **(vdecimate_kwargs | kwargs))
 
-        avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
-
-    if kwargs.get('dryrun', None):
-        stats = func.work_clip.vivtc.VDecimate(**(vdecimate_kwargs | kwargs))
-
-        if not weight:
+        if dryrun:
             return stats
 
-        vdecimate_kwargs.pop('dryrun', None)
+        clip = kwargs.pop('clip2', clip)
 
+        avg = clip.std.AverageFrames(weights=[0, 1 - weight, weight])
         splice = find_prop_rfs(clip, avg, "VDecimateDrop", "==", 1, stats)
+        vdecimate_kwargs |= dict(clip2=splice)
 
-        if kwargs.get('clip2', None):
-            vdecimate_kwargs |= dict(clip2=splice)
-        else:
-            func.work_clip = splice
 
     decimate = func.work_clip.vivtc.VDecimate(**(vdecimate_kwargs | kwargs))
 
