@@ -140,6 +140,17 @@ def vfm(
 
     This function uses VIVTC's VFM plugin to detect and match pairs of fields in telecined content.
 
+    You can pass a post-processing clip or function that will act on leftover combed frames.
+    If you pass a clip, it will replace combed frames with that clip. If you pass a function,
+    it will run that function on your input clip and replace combed frames with it.
+
+    Example usage:
+
+    .. code-block:: python
+
+        # Run vsaa.Nnedi3 on combed frames
+        >>> vfm(clip, postprocess=lambda x: Nnedi3().interpolate(x, double_y=False))
+
     :param clip:            Input clip to field matching telecine on.
     :param tff:             Field order of the input clip.
                             If None, it will be automatically detected.
@@ -181,7 +192,7 @@ def vfm(
 
     if postprocess:
         if callable(postprocess):
-            postprocess = postprocess(clip)
+            postprocess = postprocess(kwargs.get('clip2', clip))
 
         fieldmatch = find_prop_rfs(fieldmatch, postprocess, "_Combed", "==", 1)
 
