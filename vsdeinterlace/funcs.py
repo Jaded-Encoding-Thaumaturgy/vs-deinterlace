@@ -6,9 +6,11 @@ from stgpytools import CustomIntEnum
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import BlurMatrix
 from vsdenoise import MVTools
-from vstools import (ConvMode, CustomEnum, FormatsMismatchError, InvalidFramerateError,
-                     FunctionUtil, FuncExceptT, GenericVSFunction, KwargsT, PlanesT,
-                     core, vs, scale_8bit, check_variable)
+from vstools import (
+    ConvMode, CustomEnum, FormatsMismatchError, InvalidFramerateError,
+    FunctionUtil, FuncExceptT, GenericVSFunction, KwargsT, PlanesT,
+    core, vs, scale_8bit, check_variable, scale_value
+)
 
 __all__ = [
     'telop_resample',
@@ -147,7 +149,7 @@ class FixInterlacedFades(CustomEnum):
     Brighten: FixInterlacedFades = object()  # type: ignore
 
     def __call__(
-        self, clip: vs.VideoNode, colors: float | list[float] | PlanesT = 0.0,
+        self, clip: vs.VideoNode, colors: int | list[int] | PlanesT = 0.0,
         planes: PlanesT = None, func: FuncExceptT | None = None
     ) -> vs.VideoNode:
         """
@@ -163,7 +165,7 @@ class FixInterlacedFades(CustomEnum):
         Make sure to run this *after* IVTC!
 
         :param clip:                            Clip to process.
-        :param colors:                          Fade source/target color (floating-point plane averages).
+        :param colors:                          Fade source/target color.
 
         :return:                                Clip with fades to/from `colors` accurately deinterlaced.
                                                 Frames that don't contain such fades may be damaged.
@@ -174,6 +176,8 @@ class FixInterlacedFades(CustomEnum):
             raise ExprVars._get_akarin_err()(func=func)
 
         f = FunctionUtil(clip, func, planes, vs.YUV, 32)
+
+        colors = [scale_value(_, 8, f.work_clip, chroma=False if colors.index(_) == 0 else True) for _ in colors]
 
         fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
 
