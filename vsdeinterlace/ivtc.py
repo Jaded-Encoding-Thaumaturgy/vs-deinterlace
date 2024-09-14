@@ -179,11 +179,8 @@ def vfm(
         else:
             vfm_kwargs |= dict(blockx=block[0], blocky=block[1])
 
-    if y := kwargs.pop('y', None):
-        if isinstance(y, int):
-            vfm_kwargs |= dict(y0=y, y1=y)
-        else:
-            vfm_kwargs |= dict(y0=y[0], y1=y[1])
+    if (y := kwargs.pop('y', None)) and not isinstance(y, int):
+        vfm_kwargs |= dict(y0=y[0], y1=y[1])
 
     if not kwargs.get('clip2', None) and func.work_clip.format is not clip.format:
         vfm_kwargs |= dict(clip2=clip)
