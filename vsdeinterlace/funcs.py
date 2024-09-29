@@ -212,7 +212,7 @@ class FixInterlacedFades(CustomEnum):
 def vinverse(
     clip: vs.VideoNode,
     comb_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
-    contra_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 4, 6, 4, 1],
+    contra_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
     contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25,
     thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
@@ -256,8 +256,8 @@ def vinverse(
     combed = norm_expr(
         [func.work_clip, blurred, blurred2],  # type:ignore
         'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D2@ abs D2A! '
-        'D2@ D1@ xor D2A@ D1A@ < D2@ D1@ ? {scl} * D2A@ D1A@ < D2@ D1@ ? ? y + '
-        'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ? ?',
+        'D2@ D1@ xor D2A@ D1A@ < D2@ D1@ ? {scl} * D2A@ D1A@ < D2@ D1@ ? ? '
+        'y + x {amnt} + min x {amnt} - max ?',
         planes, sstr=contra_str, amnt=scale_8bit(func.work_clip, amnt),
         scl=scl, thr=scale_8bit(func.work_clip, thr),
     )
