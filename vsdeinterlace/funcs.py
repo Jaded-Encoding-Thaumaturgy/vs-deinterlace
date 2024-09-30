@@ -6,9 +6,11 @@ from stgpytools import CustomIntEnum
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import BlurMatrix
 from vsdenoise import MVTools
-from vstools import (ConvMode, CustomEnum, FormatsMismatchError, InvalidFramerateError,
-                     FunctionUtil, FuncExceptT, GenericVSFunction, KwargsT, PlanesT,
-                     core, vs, scale_8bit, check_variable)
+from vstools import (
+    ConvMode, CustomEnum, FormatsMismatchError, InvalidFramerateError,
+    FunctionUtil, FuncExceptT, GenericVSFunction, KwargsT, PlanesT,
+    core, vs, scale_8bit, check_variable
+)
 
 __all__ = [
     'telop_resample',
@@ -212,13 +214,13 @@ class FixInterlacedFades(CustomEnum):
 def vinverse(
     clip: vs.VideoNode,
     comb_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
-    contra_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 4, 6, 4, 1],
-    contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25,
+    contra_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
+    contra_str: float = 2.0, amnt: int = 255, scl: float = 0.25,
     thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
 ) -> vs.VideoNode:
     """
-    A simple but effective plugin to remove residual combing. Based on an AviSynth script by Didée.
+    A simple but effective script to remove residual combing. Based on an AviSynth script by Didée.
 
     :param clip:            Clip to process.
     :param comb_blur:       Filter used to remove combing.
@@ -255,9 +257,8 @@ def vinverse(
 
     combed = norm_expr(
         [func.work_clip, blurred, blurred2],  # type:ignore
-        'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D2@ abs D2A! '
-        'D2@ D1@ xor D2A@ D1A@ < D2@ D1@ ? {scl} * D2A@ D1A@ < D2@ D1@ ? ? y + '
-        'LIM! x {amnt} + LIM@ < x {amnt} + x {amnt} - LIM@ > x {amnt} - LIM@ ? ? ?',
+        'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D1A@ D2@ abs < D1@ D2@ ? D3! '
+        'D1@ D2@ xor D3@ {scl} * D3@ ? y + x {amnt} + min x {amnt} - max ?',
         planes, sstr=contra_str, amnt=scale_8bit(func.work_clip, amnt),
         scl=scl, thr=scale_8bit(func.work_clip, thr),
     )
