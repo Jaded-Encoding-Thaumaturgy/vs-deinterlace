@@ -258,7 +258,7 @@ def vinverse(
     combed = norm_expr(
         [func.work_clip, blurred, blurred2],  # type:ignore
         'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D1A@ D2@ abs < D1@ D2@ ? D3! '
-        'D1@ D2@ xor D3@ {scl} * D3@ ? y + x {amnt} + min x {amnt} - max ?',
+        'D1@ D2@ xor D3@ {scl} * D3@ ? y + x {amnt} - x {amnt} + clip ?',
         planes, sstr=contra_str, amnt=scale_8bit(func.work_clip, amnt),
         scl=scl, thr=scale_8bit(func.work_clip, thr),
     )
