@@ -7,7 +7,7 @@ from vsdenoise import MVTools
 from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import BlurMatrix
 from vstools import (
-    ColorRange, ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT, FunctionUtil, GenericVSFunction,
+    ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT, FunctionUtil, GenericVSFunction,
     InvalidFramerateError, KwargsT, PlanesT, check_variable, core, scale_value, vs
 )
 
@@ -260,8 +260,8 @@ def vinverse(
         [func.work_clip, blurred, blurred2],  # type:ignore
         'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D1A@ D2@ abs < D1@ D2@ ? D3! '
         'D1@ D2@ xor D3@ {scl} * D3@ ? y + x {amnt} - x {amnt} + clip ?',
-        planes, sstr=contra_str, amnt=scale_value(amnt, 8, func.work_clip, ColorRange.FULL),
-        scl=scl, thr=scale_value(thr, 8, func.work_clip, ColorRange.FULL),
+        planes, sstr=contra_str, amnt=scale_value(amnt, 8, func.work_clip),
+        scl=scl, thr=scale_value(thr, 8, func.work_clip),
     )
 
     return func.return_clip(combed)
