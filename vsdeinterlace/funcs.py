@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Sequence, cast
+from typing import Any, cast
 
 from stgpytools import CustomIntEnum
 from vsdenoise import MVTools
@@ -8,7 +8,7 @@ from vsexprtools import ExprVars, complexpr_available, norm_expr
 from vsrgtools import BlurMatrix
 from vstools import (
     ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT, FunctionUtil, GenericVSFunction,
-    InvalidFramerateError, KwargsT, PlanesT, check_variable, core, scale_delta, vs
+    InvalidFramerateError, PlanesT, check_variable, core, scale_delta, vs
 )
 
 __all__ = [
@@ -214,8 +214,8 @@ class FixInterlacedFades(CustomEnum):
 
 def vinverse(
     clip: vs.VideoNode,
-    comb_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
-    contra_blur: GenericVSFunction | vs.VideoNode | Sequence[int] = [1, 2, 1],
+    comb_blur: GenericVSFunction | vs.VideoNode = BlurMatrix.BINOMIAL(mode=ConvMode.VERTICAL),
+    contra_blur: GenericVSFunction | vs.VideoNode = BlurMatrix.BINOMIAL(mode=ConvMode.VERTICAL),
     contra_str: float = 2.0, amnt: int = 255, scl: float = 0.25,
     thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
@@ -234,25 +234,17 @@ def vinverse(
 
     func = FunctionUtil(clip, vinverse, planes)
 
-    def_k = KwargsT(mode=ConvMode.VERTICAL)
-
     kwrg_a, kwrg_b = not callable(comb_blur), not callable(contra_blur)
 
     if isinstance(comb_blur, vs.VideoNode):
         blurred = comb_blur
     else:
-        if not callable(comb_blur):
-            comb_blur = BlurMatrix(comb_blur)  # type:ignore
-
-        blurred = comb_blur(func.work_clip, planes=planes, **((def_k | kwargs) if kwrg_a else kwargs))
+        blurred = comb_blur(func.work_clip, planes=planes, **kwargs if kwrg_a else kwargs)
 
     if isinstance(contra_blur, vs.VideoNode):
         blurred2 = contra_blur
     else:
-        if not callable(contra_blur):
-            contra_blur = BlurMatrix(contra_blur)  # type:ignore
-
-        blurred2 = contra_blur(blurred, planes=planes, **((def_k | kwargs) if kwrg_b else kwargs))
+        blurred2 = contra_blur(blurred, planes=planes, **kwargs if kwrg_b else kwargs)
 
     FormatsMismatchError.check(func.func, func.work_clip, blurred, blurred2)
 
