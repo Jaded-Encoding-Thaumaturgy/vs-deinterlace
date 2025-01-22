@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+from functools import partial
+
 from stgpytools import CustomIntEnum
 from vsdenoise import MVTools
 from vsexprtools import ExprVars, complexpr_available, norm_expr
-from vsrgtools import BlurMatrix
+from vsrgtools import BlurMatrix, sbr
 from vstools import (
     ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT, FunctionUtil, GenericVSFunction,
     InvalidFramerateError, PlanesT, check_variable, core, scale_delta, vs
@@ -214,9 +216,9 @@ class FixInterlacedFades(CustomEnum):
 
 def vinverse(
     clip: vs.VideoNode,
-    comb_blur: GenericVSFunction | vs.VideoNode = BlurMatrix.BINOMIAL(mode=ConvMode.VERTICAL),
+    comb_blur: GenericVSFunction | vs.VideoNode = partial(sbr, mode=ConvMode.VERTICAL),
     contra_blur: GenericVSFunction | vs.VideoNode = BlurMatrix.BINOMIAL(mode=ConvMode.VERTICAL),
-    contra_str: float = 2.0, amnt: int = 255, scl: float = 0.25,
+    contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25,
     thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
 ) -> vs.VideoNode:
