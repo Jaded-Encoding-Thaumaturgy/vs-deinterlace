@@ -218,7 +218,7 @@ def vinverse(
     clip: vs.VideoNode,
     comb_blur: GenericVSFunction | vs.VideoNode = partial(sbr, mode=ConvMode.VERTICAL),
     contra_blur: GenericVSFunction | vs.VideoNode = BlurMatrix.BINOMIAL(mode=ConvMode.VERTICAL),
-    contra_str: float = 2.7, amnt: int = 255, scl: float = 0.25,
+    contra_str: float = 2.7, amnt: int | None = None, scl: float = 0.25,
     thr: int = 0, planes: PlanesT = None,
     **kwargs: Any
 ) -> vs.VideoNode:
@@ -250,12 +250,19 @@ def vinverse(
 
     FormatsMismatchError.check(func.func, func.work_clip, blurred, blurred2)
 
-    combed = norm_expr(
-        [func.work_clip, blurred, blurred2],  # type:ignore
+    expr = (
         'x y - D1! D1@ abs D1A! D1A@ {thr} < x y z - {sstr} * D2! D1A@ D2@ abs < D1@ D2@ ? D3! '
-        'D1@ D2@ xor D3@ {scl} * D3@ ? y + x {amnt} - x {amnt} + clip ?',
-        planes, sstr=contra_str, amnt=scale_delta(amnt, 8, func.work_clip),
-        scl=scl, thr=scale_delta(thr, 8, func.work_clip),
+        'D1@ D2@ xor D3@ {scl} * D3@ ? y + '
+    )
+
+    if amnt is not None:
+        expr += 'x {amnt} - x {amnt} + clip '
+        amnt = scale_delta(amnt, 8, func.work_clip)
+
+    combed = norm_expr(
+        [func.work_clip, blurred, blurred2],
+        expr + '?',
+        planes, sstr=contra_str, amnt=amnt, scl=scl, thr=scale_delta(thr, 8, func.work_clip),
     )
 
     return func.return_clip(combed)
