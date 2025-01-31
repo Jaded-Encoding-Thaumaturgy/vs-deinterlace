@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
 from functools import partial
 
 from stgpytools import CustomIntEnum
 from vsdenoise import MVTools
-from vsexprtools import ExprVars, complexpr_available, norm_expr
+from vsexprtools import norm_expr
 from vsrgtools import BlurMatrix, sbr
 from vstools import (
     ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT, FunctionUtil, GenericVSFunction,
@@ -15,7 +15,7 @@ from vstools import (
 
 __all__ = [
     'telop_resample',
-    'fix_interlaced_fades',
+    'FixInterlacedFades',
     'vinverse'
 ]
 
@@ -173,9 +173,6 @@ class FixInterlacedFades(CustomEnum):
         """
         func = func or self.__class__
 
-        if not complexpr_available:
-            raise ExprVars._get_akarin_err()(func=func)
-
         f = FunctionUtil(clip, func, planes, vs.YUV, 32)
 
         fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
@@ -191,24 +188,22 @@ class FixInterlacedFades(CustomEnum):
             }
         )
 
-        expr_header = 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! AVG@ 0 = x x {color} - '
-        expr_footer = ' AVG@ / * ? {color} +'
-
         expr_mode, expr_mode_chroma = (
             ('min', '<') if self == self.Darken else ('max', '>') if self == self.Brighten else ('+ 2 /', '+ 2 /')
         )
 
+        expr_header = 'Y 2 % x.fbAvg{i} x.ftAvg{i} ? AVG! AVG@ 0 = x x {color} - '
+        expr_footer = ' AVG@ / * ? {color} +'
+
+        expr_luma = expr_header + 'x.ftAvg{i} x.fbAvg{i} {expr_mode}' + expr_footer
+        expr_chroma = expr_luma if self == self.Average else (
+            expr_header + 'x.ftAvg{i} abs x.fbAvg{i} abs {expr_mode} x.ftAvg{i} x.fbAvg{i} ?' + expr_footer
+        )
+
         fix = norm_expr(
-            props_clip, (
-                # luma
-                expr_header + 'x.ftAvg{i} x.fbAvg{i} {expr_mode}' + expr_footer,
-                # chroma
-                expr_header + ('x.ftAvg{i} x.fbAvg{i} {expr_mode}' if (
-                    self == self.Average
-                ) else 'x.ftAvg{i} abs x.fbAvg{i} abs {expr_mode} x.ftAvg{i} x.fbAvg{i} ?') + expr_footer
-            ),
-            planes, i=f.norm_planes, expr_mode=(expr_mode, expr_mode_chroma),
-            color=colors, force_akarin=func,
+            props_clip, (expr_luma, expr_chroma),
+            planes, i=f.norm_planes, color=colors,
+            expr_mode=(expr_mode, expr_mode_chroma)
         )
 
         return f.return_clip(fix)
@@ -266,6 +261,3 @@ def vinverse(
     )
 
     return func.return_clip(combed)
-
-
-fix_interlaced_fades = cast(FixInterlacedFades, FixInterlacedFades.Average)
