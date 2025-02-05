@@ -48,7 +48,7 @@ class telop_resample(CustomIntEnum):
         pattern = [0, 1, 0, 0, 1][pattern]
         direction = [-1, -1, 1, 1, 1][pattern]
 
-        ivtc_fps, ivtc_fps_div = (dict(fpsnum=x, fpsden=1001) for x in (24000, 12000))
+        ivtc_fps, ivtc_fps_div = (dict[str, Any](fpsnum=x, fpsden=1001) for x in (24000, 12000))
 
         pos = []
         assumefps = 0
@@ -251,7 +251,7 @@ def vinverse(
 
     if amnt is not None:
         expr += 'x {amnt} - x {amnt} + clip '
-        amnt = scale_delta(amnt, 8, func.work_clip)
+        amnt = scale_delta(amnt, 8, func.work_clip)  # type: ignore[assignment]
 
     combed = norm_expr(
         [func.work_clip, blurred, blurred2],

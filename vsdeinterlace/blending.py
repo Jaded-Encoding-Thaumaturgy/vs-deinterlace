@@ -39,7 +39,7 @@ def deblending_helper(deblended: vs.VideoNode, fieldmatched: vs.VideoNode, lengt
             prop_srcs, f'x._Combed N {length} % 1 + y._Combed {length} 0 ? + 0 ?', vs.GRAY8
         )
 
-        return fieldmatched.std.FrameEval(lambda n, f: inters[f[0][0, 0]], index_src)  # type: ignore
+        return fieldmatched.std.FrameEval(lambda n, f: inters[f[0][0, 0]], index_src)
 
     def _deblend_eval(n: int, f: list[vs.VideoFrame]) -> vs.VideoNode:
         idx = 0
@@ -56,19 +56,19 @@ def deblending_helper(deblended: vs.VideoNode, fieldmatched: vs.VideoNode, lengt
 
 
 def deblend(
-    src: vs.VideoNode, fieldmatched: vs.VideoNode | None = None, decomber: VSFunction | None = vinverse, **kwargs: Any
+    clip: vs.VideoNode, fieldmatched: vs.VideoNode | None = None, decomber: VSFunction | None = vinverse, **kwargs: Any
 ) -> vs.VideoNode:
     """
     Automatically deblends if normal field matching leaves 2 blends every 5 frames. Adopted from jvsfunc.
 
-    :param src:             Input source to fieldmatching.
+    :param clip:             Input source to fieldmatching.
     :param fieldmatched:    Source after field matching, must have field=3 and possibly low cthresh.
     :param decomber:        Optional post processing decomber after deblending and before pattern matching.
 
     :return: Deblended clip.
     """
 
-    deblended = norm_expr(shift_clip_multi(src, (-1, 2)), 'z a 2 / - y x 2 / - +')
+    deblended = norm_expr(shift_clip_multi(clip, (-1, 2)), 'z a 2 / - y x 2 / - +')
 
     if decomber:
         deblended = decomber(deblended, **kwargs)
@@ -76,7 +76,7 @@ def deblend(
     if fieldmatched:
         deblended = deblending_helper(fieldmatched, deblended)
 
-    return join(fieldmatched or src, deblended)
+    return join(fieldmatched or clip, deblended)
 
 
 def deblend_bob(
@@ -126,7 +126,7 @@ def deblend_fix_kf(deblended: vs.VideoNode, fieldmatched: vs.VideoNode) -> vs.Vi
             prop_srcs, 'x._Combed x.VFMSceneChange and y.VFMSceneChange 2 0 ? 1 ?', vs.GRAY8
         )
 
-        return deblended.std.FrameEval(lambda n, f: shifted_clips[f[0][0, 0]], index_src)  # type: ignore
+        return deblended.std.FrameEval(lambda n, f: shifted_clips[f[0][0, 0]], index_src)
 
     def _keyframe_fix(n: int, f: list[vs.VideoFrame]) -> vs.VideoNode:
         keyfm = cast(tuple[int, int], (f[0].props.VFMSceneChange, f[1].props.VFMSceneChange))
