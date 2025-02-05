@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
 from functools import partial
+from typing import Any
 
 from stgpytools import CustomIntEnum
 from vsdenoise import MVTools
@@ -10,7 +9,7 @@ from vsexprtools import norm_expr
 from vsrgtools import BlurMatrix, sbr
 from vstools import (
     ConvMode, CustomEnum, FormatsMismatchError, FuncExceptT, FunctionUtil, GenericVSFunction,
-    InvalidFramerateError, PlanesT, check_variable, core, scale_delta, vs
+    InvalidFramerateError, PlanesT, check_variable, core, limiter, scale_delta, vs
 )
 
 __all__ = [
@@ -175,7 +174,7 @@ class FixInterlacedFades(CustomEnum):
 
         f = FunctionUtil(clip, func, planes, vs.YUV, 32)
 
-        fields = f.work_clip.std.Limiter().std.SeparateFields(tff=True)
+        fields = limiter(f.work_clip).std.SeparateFields(tff=True)
 
         for i in f.norm_planes:
             fields = fields.std.PlaneStats(None, i, f'P{i}')
